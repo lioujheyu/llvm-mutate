@@ -24,7 +24,9 @@ Installation
 
   Run the following to build and install llvm-mutate, changing the
   llvm/cmake path /usr/local/share/llvm/cmake to the appropriate path
-  on your system.
+  on your system. If the llvm is compiled and installed from the 
+  source, it is likely the path to llvm/cmake should be /usr/local/
+  lib/cmake/llvm
 
     mkdir build
     cd build
