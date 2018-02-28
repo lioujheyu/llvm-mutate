@@ -24,9 +24,8 @@ void useResult(Instruction *I){
   // we don't care if already used, use it again!
   // if(!I->use_empty()){ errs()<<"already used!\n" };
   BasicBlock *B = I->getParent();
-  BasicBlock::iterator Begin = I; ++Begin;
-  for (BasicBlock::iterator i = Begin, E = B->end(); i != E; ++i){
-    Instruction *Inst = i;
+  for (Instruction &i : *B) {
+    Instruction *Inst = &i;
     int counter = -1;
     for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e; ++i){
       counter++;
@@ -52,7 +51,7 @@ Value *findInstanceOfType(Instruction *I, Type *T){
   for (BasicBlock::iterator prev = B->begin(); cast<Value>(prev) != I; ++prev){
     if((isPointer && prev->getType()->isPointerTy()) ||
        (prev->getType() == T)){
-      errs()<<"found local replacement: "<<prev<<"\n";
+      errs()<<"found local replacement: "<<cast<Value>(prev)<<"\n";
       return cast<Value>(prev); } }
 
   // arguments to the function
@@ -70,7 +69,7 @@ Value *findInstanceOfType(Instruction *I, Type *T){
        g != E; ++g){
     if((isPointer && g->getType()->isPointerTy()) ||
        (g->getType() == T)){
-      errs()<<"found global replacement: "<<g<<"\n";
+      errs()<<"found global replacement: "<<cast<Value>(g)<<"\n";
       return cast<Value>(g); } }
 
   // TODO: types which could be replaced with sane default
@@ -123,7 +122,7 @@ void replaceOperands(Instruction *I){
         bool isInScope = false;
         for (BasicBlock::iterator i = B->begin();
              cast<Instruction>(i) != I; ++i)
-          if(i == v) { isInScope = true; break; }
+          if(&*i == v) { isInScope = true; break; }
 
         if(!isInScope){
           // If we've made it this far we really do have to find a replacement
@@ -141,7 +140,7 @@ namespace {
     bool runOnModule(Module &M){
       count = 0;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkFunction(I);
+        walkFunction(&*I);
 
       errs() << count << "\n";
 
@@ -168,7 +167,7 @@ namespace {
     bool runOnModule(Module &M){
       count = 0;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkFunction(I);
+        walkFunction(&*I);
       return false;
     }
 
@@ -196,7 +195,7 @@ namespace {
     bool runOnModule(Module &M){
       count = 0;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkFunction(I);
+        walkFunction(&*I);
       return false;
     }
 
@@ -227,10 +226,9 @@ namespace {
       count = 0;
       PutFn = M.getOrInsertFunction("llvm_mutate_trace",
                                     Type::getVoidTy(M.getContext()),
-                                    Type::getInt32Ty(M.getContext()),
-                                    NULL);
+                                    Type::getInt32Ty(M.getContext()));
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkFunction(I);
+        walkFunction(&*I);
       return true;
     }
 
@@ -264,7 +262,7 @@ namespace {
       count = 0;
       changed_p = false;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkFunction(I)) break;
+        if(walkFunction(&*I)) break;
 
       if(changed_p) errs() << "cut " << Inst1 << "\n";
       else          errs() << "cut failed\n";
@@ -302,10 +300,10 @@ namespace {
       count = 0;
       changed_p = false;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkCollect(I)) break;
+        if(walkCollect(&*I)) break;
       count = 0;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkPlace(I)) break;
+        if(walkPlace(&*I)) break;
 
       if(changed_p) errs()<<"inserted "<<Inst2<<" before "<<Inst1<<"\n";
       else          errs()<<"insertion failed\n";
@@ -316,7 +314,7 @@ namespace {
     int unsigned count;
     bool result_ignorable_p;
     bool changed_p;
-    BasicBlock::iterator temp;
+    Instruction *temp;
 
     bool walkCollect(Function *F){
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
@@ -337,7 +335,7 @@ namespace {
         for (BasicBlock::iterator I = B->begin(), E = B->end(); I != E; ++I) {
           count += 1;
           if(count == Inst1){
-            temp->insertBefore(I); // insert temp before I
+            temp->insertBefore(&*I); // insert temp before I
             replaceOperands(temp); // wire incoming edges of CFG into temp
             if(!result_ignorable_p)
               useResult(temp); // wire outgoing results of temp into CFG
@@ -356,10 +354,10 @@ namespace {
       count = 0;
       changed_p = false;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkCollect(I);
+        walkCollect(&*I);
       count = 0;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkPlace(I)) break;
+        if(walkPlace(&*I)) break;
 
       if(changed_p) errs() << "replaced " << Inst1 << " with " << Inst2 << "\n";
       else          errs() << "replace failed\n";
@@ -369,7 +367,7 @@ namespace {
   private:
     int unsigned count;
     bool changed_p;
-    BasicBlock::iterator temp;
+    Instruction *temp;
 
     void walkCollect(Function *F){
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
@@ -401,7 +399,7 @@ namespace {
       count = 0;
       changed_p = false;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkCollect(I);
+        walkCollect(&*I);
 
       count = 0;
       // confirm that the types match
@@ -409,12 +407,12 @@ namespace {
         errs() << "type mismatch " <<
           temp1->getType() << " and " <<
           temp2->getType() << "\n";
-        delete(temp1);
-        delete(temp2);
+        temp1->deleteValue();
+        temp2->deleteValue();
         return changed_p; }
 
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkPlace(I)) break;
+        if(walkPlace(&*I)) break;
 
       if(changed_p) errs() << "swapped " << Inst1 << " with " << Inst2 << "\n";
       else          errs() << "swap failed\n";
@@ -424,7 +422,7 @@ namespace {
   private:
     int unsigned count;
     bool changed_p;
-    BasicBlock::iterator temp1, temp2;
+    Instruction *temp1, *temp2;
 
     void walkCollect(Function *F){
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
