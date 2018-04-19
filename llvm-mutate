@@ -37,9 +37,12 @@ LINK=""
 OUT=""
 FIRST=0
 RAW=""
+PTX=
+RUN_RC=
+LINK_RC=
 
 init(){ if [ $FIRST -eq 0 ];then FIRST=1; RAW=$(cat -);fi; }
-run(){ init; RAW="$(echo "$RAW"|opt ${OPT_FLAGS} $@|llvm-dis)"; }
+run(){ init; RAW="$(echo "$RAW"|opt ${OPT_FLAGS} $@|llvm-dis)"; RUN_RC=$?; }
 graph(){
     for graph in $(run $1 3>&1 >/dev/null 2>&3 \
         |sed "s/Writing '//;s/'...//");do
@@ -59,7 +62,7 @@ if [ $? -eq 4 ]; then
     # GNU enhanced getopt is available
     eval set -- $(getopt \
         -o hILntT:gGc:r:i:s:lo:f: \
-        -l help,ids,cfg,call-graph,list,name,trace,trace-obj:,cut:,replace:,insert:,swap:,link,out:,file: \
+        -l help,ids,cfg,call-graph,list,name,trace,ptx,trace-obj:,cut:,replace:,insert:,swap:,link,out:,file: \
         -- "$@" || echo "$HELP_TEXT" && exit 1;)
 else
     # Original getopt is available
@@ -74,6 +77,7 @@ while [ $# -gt 0 ];do
         -l|--link) LINK="yes";;
         -o|--out)  OUT="$2"; shift;;
         -f|--file) FILE="$2"; shift;;
+        --ptx) PTX="yes"; shift;;
         -I|--ids)   run -ids ;;
         -L|--list)  run -list ;;
         -n|--name)  run -name ;;
@@ -104,10 +108,19 @@ done
 init
 
 if [ ! -z "$LINK" ];then
-    if [ -z "$OUT" ];then OUT=a.out; fi
-    if [ ! -z "$TRACE" ];then LINK_FLAGS+=" $TRACE_OBJ"; fi
-    echo "$RAW"|llc|clang $LINK_FLAGS -x assembler - -o $OUT
+    if [ ! -z "$PTX" ]; then
+        if [ -z "$OUT" ];then OUT=a.ptx; fi
+        echo "$RAW"|llc -o $OUT
+        LINK_RC=$?
+    else
+        if [ -z "$OUT" ];then OUT=a.out; fi
+        if [ ! -z "$TRACE" ];then LINK_FLAGS+=" $TRACE_OBJ"; fi
+        echo "$RAW"|llc|clang $LINK_FLAGS -x assembler - -o $OUT
+        LINK_RC=$?
+    fi
 else
     if [ -z "$OUT" ];then OUT=/dev/stdout; fi
     echo "$RAW" > $OUT
 fi
+exit $((RUN_RC + LINK_RC))
+
