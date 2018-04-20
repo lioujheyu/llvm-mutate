@@ -11,11 +11,11 @@
 
 using namespace llvm;
 
-static cl::opt<unsigned>
-Inst1("inst1", cl::init(0), cl::desc("first statement to mutate"));
+cl::opt<unsigned> Inst1("inst1", cl::init(0), cl::desc("first statement to mutate"));
+cl::opt<std::string> Inst1ID("inst1ID", cl::init(""), cl::desc("The Unique ID of first statement to mutate"));
 
-static cl::opt<unsigned>
-Inst2("inst2", cl::init(0), cl::desc("second statement to mutate"));
+cl::opt<unsigned> Inst2("inst2", cl::init(0), cl::desc("second statement to mutate"));
+cl::opt<std::string> Inst2ID("inst2ID", cl::init(""), cl::desc("The Unique ID of first statement to mutate"));
 
 // Use the result of instruction I somewhere in the basic block in
 // which it is defined.  Ideally in the immediately subsequent
@@ -128,8 +128,36 @@ void replaceOperands(Instruction *I){
           // If we've made it this far we really do have to find a replacement
           Value *val = findInstanceOfType(I, v->getType());
           if(val != 0){
-            errs() << "replacing argument: " << v << "\n";
+            errs() << "replacing argument: " << v->getName() << "\n";
             I->setOperand(counter, val); } } } } }
+}
+
+/***
+ * Update I_in's uniqueID metadata. The uniqueID has a foramt like
+ * <Originated Inst UID>.<Mode><instance>. This function is to address
+ * how many instruction instance from this I_in's accesstor has existed
+ * in the program, and update I_in's instance number accordingly.
+ **/
+void updateMetadata(Instruction *I_in, char mode)
+{
+  MDNode* N = I_in->getMetadata("uniqueID");
+  std::string targetMD = cast<MDString>(N->getOperand(0))->getString();
+  targetMD += "." + mode;
+
+  unsigned cnt = 0;
+  Module *M = I_in->getModule();
+  for(Function &F : *M) {
+    for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+      MDNode* N = I->getMetadata("uniqueID");
+      StringRef I_MD = cast<MDString>(N->getOperand(0))->getString();
+      if (I_MD.find(targetMD) != StringRef::npos)
+        cnt++;
+    }
+  }
+  targetMD += std::to_string(cnt+1);
+  LLVMContext& C = I_in->getContext();
+  N = MDNode::get(C, MDString::get(C, targetMD));
+  I_in->setMetadata("uniqueID", N);
 }
 
 namespace {
@@ -209,11 +237,12 @@ namespace {
     void walkFunction(Function *F){
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         count += 1;
-
-        if (!I->getType()->isVoidTy()){
-          char buf[24];
-          sprintf(buf, "inst.%d", count);
-          I->setName(buf); } } }
+        std::string uniqueID = "U" + std::to_string(count);
+        LLVMContext& C = I->getContext();
+        MDNode* N = MDNode::get(C, MDString::get(C, uniqueID));
+        I->setMetadata("uniqueID", N);
+      }
+    }
   };
 }
 
@@ -297,26 +326,27 @@ namespace {
     Insert() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      count = 0;
       changed_p = false;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
         if(walkCollect(&*I)) break;
-      count = 0;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
         if(walkPlace(&*I)) break;
 
-      if(changed_p) errs()<<"inserted "<<Inst2<<" before "<<Inst1<<"\n";
-      else          errs()<<"insertion failed\n";
+      if(changed_p)
+        errs()<<"inserted "<<Inst2<<" before "<<Inst1<<"\n";
+      else
+        errs()<<"insertion failed\n";
 
-      return changed_p; }
+      return changed_p;
+    }
 
   private:
-    int unsigned count;
     bool result_ignorable_p;
     bool changed_p;
     Instruction *temp;
 
-    bool walkCollect(Function *F){
+    bool walkCollect(Function *F) {
+      unsigned count = 0;
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         count += 1;
         if(count == Inst2) {
@@ -327,20 +357,26 @@ namespace {
           temp = I->clone();
           if (!temp->getType()->isVoidTy())
             temp->setName(I->getName()+".insert");
+
+          MDNode* N = I->getMetadata("uniqueID");
+          Inst2ID = cast<MDString>(N->getOperand(0))->getString();
           return true; } }
       return false; }
 
     bool walkPlace(Function *F){
-      for (Function::iterator B = F->begin(), E = F->end(); B != E; ++B) {
-        for (BasicBlock::iterator I = B->begin(), E = B->end(); I != E; ++I) {
-          count += 1;
-          if(count == Inst1){
-            temp->insertBefore(&*I); // insert temp before I
-            replaceOperands(temp); // wire incoming edges of CFG into temp
-            if(!result_ignorable_p)
-              useResult(temp); // wire outgoing results of temp into CFG
-            changed_p = true;
-            return true; } } }
+      unsigned count = 0;
+      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+        count += 1;
+        if(count == Inst1){
+          temp->insertBefore(&*I); // insert temp before I
+          replaceOperands(temp); // wire incoming edges of CFG into temp
+          if(!result_ignorable_p)
+            useResult(temp); // wire outgoing results of temp into CFG
+          changed_p = true;
+          updateMetadata(temp, 'i');
+          MDNode* N = I->getMetadata("uniqueID");
+          Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+          return true; } }
       return false; }
   };
 }
@@ -365,7 +401,7 @@ namespace {
       return changed_p; }
 
   private:
-    int unsigned count;
+    unsigned count;
     bool changed_p;
     Instruction *temp;
 
@@ -374,16 +410,23 @@ namespace {
         count += 1;
         if (count == Inst2) {
           temp = I->clone();
-          if (!temp->getType()->isVoidTy()) {
-            temp->setName(I->getName()+".replace1"); } } } }
-
+          if (!temp->getType()->isVoidTy())
+            temp->setName(I->getName()+".replace1");
+          MDNode* N = I->getMetadata("uniqueID");
+          Inst2ID = cast<MDString>(N->getOperand(0))->getString();
+        }
+      }
+    }
     bool walkPlace(Function *F){
       for (Function::iterator B = F->begin(), E = F->end(); B != E; ++B) {
         for (BasicBlock::iterator I = B->begin(), E = B->end(); I != E; ++I) {
           count += 1;
           if(count == Inst1){
+            MDNode* N = I->getMetadata("uniqueID");
+            Inst1ID = cast<MDString>(N->getOperand(0))->getString();
             ReplaceInstWithInst(I->getParent()->getInstList(), I, temp);
             replaceOperands(temp);
+            updateMetadata(temp, 'r');
             if(changed_p) return true;
             changed_p = true; } } }
       return false; }
@@ -396,14 +439,12 @@ namespace {
     Swap() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      count = 0;
       changed_p = false;
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
         walkCollect(&*I);
 
-      count = 0;
       // confirm that the types match
-      if(temp1->getType() != temp2->getType()){
+      if(temp1->getType() != temp2->getType()) {
         errs() << "type mismatch " <<
           temp1->getType() << " and " <<
           temp2->getType() << "\n";
@@ -420,34 +461,45 @@ namespace {
       return changed_p; }
 
   private:
-    int unsigned count;
     bool changed_p;
     Instruction *temp1, *temp2;
 
     void walkCollect(Function *F){
+      unsigned count = 0;
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         count += 1;
         if (count == Inst1) {
           temp1 = I->clone();
-          if (!temp1->getType()->isVoidTy()) {
-            temp1->setName(I->getName()+".swap1"); } }
+          if (!temp1->getType()->isVoidTy())
+            temp1->setName(I->getName()+".swap1");
+          MDNode* N = I->getMetadata("uniqueID");
+          Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+        }
         if (count == Inst2) {
           temp2 = I->clone();
-          if (!temp2->getType()->isVoidTy()){
-            temp2->setName(I->getName()+".swap2"); } } } }
+          if (!temp2->getType()->isVoidTy())
+            temp2->setName(I->getName()+".swap2");
+          MDNode* N = I->getMetadata("uniqueID");
+          Inst2ID = cast<MDString>(N->getOperand(0))->getString();
+        }
+      }
+    }
 
     bool walkPlace(Function *F){
+      unsigned count = 0;
       for (Function::iterator B = F->begin(), E = F->end(); B != E; ++B) {
         for (BasicBlock::iterator I = B->begin(), E = B->end(); I != E; ++I) {
           count += 1;
           if(count == Inst2){
             ReplaceInstWithInst(I->getParent()->getInstList(), I, temp1);
             replaceOperands(temp1);
+            updateMetadata(temp1, 's');
             if(changed_p) return true;
             changed_p = true; }
           if(count == Inst1){
             ReplaceInstWithInst(I->getParent()->getInstList(), I, temp2);
             replaceOperands(temp2);
+            updateMetadata(temp2, 's');
             if(changed_p) return true;
             changed_p = true; } } }
       return false; }
