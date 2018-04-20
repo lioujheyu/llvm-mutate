@@ -1,13 +1,5 @@
 // Copyright (C) 2013 Eric Schulte
-#include <stdio.h>
-#include "llvm/Pass.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/InstIterator.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "Mutate.h"
 
 using namespace llvm;
 
@@ -16,172 +8,6 @@ cl::opt<std::string> Inst1ID("inst1ID", cl::init(""), cl::desc("The Unique ID of
 
 cl::opt<unsigned> Inst2("inst2", cl::init(0), cl::desc("second statement to mutate"));
 cl::opt<std::string> Inst2ID("inst2ID", cl::init(""), cl::desc("The Unique ID of first statement to mutate"));
-
-// Use the result of instruction I somewhere in the basic block in
-// which it is defined.  Ideally in the immediately subsequent
-// instruction.
-void useResult(Instruction *I){
-  // we don't care if already used, use it again!
-  // if(!I->use_empty()){ errs()<<"already used!\n" };
-  BasicBlock *B = I->getParent();
-  for (Instruction &i : *B) {
-    Instruction *Inst = &i;
-    int counter = -1;
-    for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e; ++i){
-      counter++;
-      Value *v = *i;
-      if (v->getType() == I->getType()){
-        Inst->setOperand(counter, I);
-        return; } } }
-  errs()<<"could find no use for result\n";
-}
-
-// Find a value of Type T which can be used at Instruction I.  Search
-// in this order.
-// 1. values in Basic Block before I
-// 2. arguments to the function containing I
-// 3. global values
-// 4. null of the correct type
-// 5. return a 0 that the caller can stick where the sun don't shine
-Value *findInstanceOfType(Instruction *I, Type *T){
-  bool isPointer = I->getType()->isPointerTy();
-
-  // local inside the Basic Block
-  BasicBlock *B = I->getParent();
-  for (BasicBlock::iterator prev = B->begin(); cast<Value>(prev) != I; ++prev){
-    if((isPointer && prev->getType()->isPointerTy()) ||
-       (prev->getType() == T)){
-      errs()<<"found local replacement: "<<cast<Value>(prev)<<"\n";
-      return cast<Value>(prev); } }
-
-  // arguments to the function
-  Function *F = B->getParent();
-  for (Function::arg_iterator arg = F->arg_begin(), E = F->arg_end();
-       arg != E; ++arg){
-    if((isPointer && arg->getType()->isPointerTy()) ||
-       (arg->getType() == T)){
-      errs()<<"found arg replacement: "<<arg<<"\n";
-      return cast<Value>(arg); } }
-
-  // global values
-  Module *M = F->getParent();
-  for (Module::global_iterator g = M->global_begin(), E = M->global_end();
-       g != E; ++g){
-    if((isPointer && g->getType()->isPointerTy()) ||
-       (g->getType() == T)){
-      errs()<<"found global replacement: "<<cast<Value>(g)<<"\n";
-      return cast<Value>(g); } }
-
-  // TODO: types which could be replaced with sane default
-  //       - result of comparisons
-  //       - nulls or zeros for number types
-  // pulled from getNullValue
-  switch (T->getTypeID()) {
-  case Type::IntegerTyID:
-  case Type::HalfTyID:
-  case Type::FloatTyID:
-  case Type::DoubleTyID:
-  case Type::X86_FP80TyID:
-  case Type::FP128TyID:
-  case Type::PPC_FP128TyID:
-  case Type::PointerTyID:
-  case Type::StructTyID:
-  case Type::ArrayTyID:
-  case Type::VectorTyID:
-    return Constant::getNullValue(T);
-  default:
-    return 0;
-  }
-}
-
-// Replace the operands of Instruction I with in-scope values of the
-// same type.  If the operands are already in scope, then retain them.
-void replaceOperands(Instruction *I){
-  // don't touch arguments of branch instructions
-  if(isa<BranchInst>(I)) return;
-
-  // loop through operands,
-  int counter = -1;
-  for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e; ++i) {
-    counter++;
-    Value *v = *i;
-
-    // don't touch global or constant values
-    if (!isa<GlobalValue>(v) && !isa<Constant>(v)){
-
-      // don't touch arguments to the current function
-      Function *F = I->getParent()->getParent();
-      bool isAnArgument = false;
-      for (Function::arg_iterator arg = F->arg_begin(), E = F->arg_end();
-           arg != E; ++arg) {
-        if( arg == v ){ isAnArgument = true; break; } }
-
-      if(!isAnArgument) {
-        // Don't touch operands which are in scope
-        BasicBlock *B = I->getParent();
-        bool isInScope = false;
-        for (BasicBlock::iterator i = B->begin();
-             cast<Instruction>(i) != I; ++i)
-          if(&*i == v) { isInScope = true; break; }
-
-        if(!isInScope){
-          // If we've made it this far we really do have to find a replacement
-          Value *val = findInstanceOfType(I, v->getType());
-          if(val != 0){
-            errs() << "replacing argument: " << v->getName() << "\n";
-            I->setOperand(counter, val); } } } } }
-}
-
-/***
- * Update I_in's uniqueID metadata. The uniqueID has a foramt like
- * <Originated Inst UID>.<Mode><instance index>. This function is to address
- * how many instruction instance from this I_in's accesstor has existed
- * in the program, and update I_in's instance number accordingly.
- **/
-void updateMetadata(Instruction *I_in, char mode)
-{
-  MDNode* N = I_in->getMetadata("uniqueID");
-  std::string targetMD = cast<MDString>(N->getOperand(0))->getString();
-  targetMD += "." + mode;
-
-  unsigned cnt = 0;
-  Module *M = I_in->getModule();
-  for(Function &F : *M) {
-    for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-      MDNode* N = I->getMetadata("uniqueID");
-      StringRef I_MD = cast<MDString>(N->getOperand(0))->getString();
-      if (I_MD.find(targetMD) != StringRef::npos)
-        cnt++;
-    }
-  }
-  targetMD += std::to_string(cnt+1);
-  LLVMContext& C = I_in->getContext();
-  N = MDNode::get(C, MDString::get(C, targetMD));
-  I_in->setMetadata("uniqueID", N);
-}
-
-/***
- * This function insert a floating add instruction as a nop
- * The main usage of this nop instruction is like an anchor,
- * pointing the position of one instruction before the
- * instruction get cut, replace, or swap.
- **/
-Instruction* insertNOP(Instruction *I) {
-  assert(I->getParent());
-
-  MDNode* N = I->getMetadata("uniqueID");
-  std::string MD = cast<MDString>(N->getOperand(0))->getString();
-  MD += ".d";
-
-  Value* zero = ConstantInt::get(Type::getInt8Ty(I->getContext()), 0);
-  Instruction *nop = BinaryOperator::Create(Instruction::Add, zero, zero, "nop", &*I);
-
-  LLVMContext& C = nop->getContext();
-  MDNode* Nnop = MDNode::get(C, MDString::get(C, MD));
-  nop->setMetadata("uniqueID", Nnop);
-
-  return nop;
-}
 
 namespace {
   struct Ids : public ModulePass {
@@ -205,8 +31,11 @@ namespace {
   private:
     int unsigned count;
     void walkFunction(Function *F){
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I)
-        count += 1; }
+      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+        if (I->getName().compare("nop") != 0)
+          count += 1;
+      }
+    }
   };
 }
 
@@ -311,37 +140,23 @@ namespace {
     Cut() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      count = 0;
-      changed_p = false;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkFunction(&*I)) break;
+      Instruction *I = walkCollect(Inst1, Inst1ID, M);
+      if (I == NULL) {
+        errs() << "cut failed\n";
+        return false; }
 
-      if(changed_p) errs() << "cut " << Inst1 << "\n";
-      else          errs() << "cut failed\n";
+      MDNode* N = I->getMetadata("uniqueID");
+      Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+      insertNOP(I);
 
-      return changed_p; }
-
-  private:
-    int unsigned count;
-    bool changed_p;
-    bool walkFunction(Function *F){
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        count += 1;
-        if(count == Inst1){
-          MDNode* N = I->getMetadata("uniqueID");
-          Inst1ID = cast<MDString>(N->getOperand(0))->getString();
-          insertNOP(&*I);
-
-          // decouple the dependence from later instructions
-          if(!I->use_empty()){
-            Value *Val = findInstanceOfType(&*I, I->getType());
-            if(Val != 0){
-              I->replaceAllUsesWith(Val); } }
-          I->eraseFromParent();
-          changed_p = true;
-          return true; } }
-      return false; }
-
+      // decouple the dependence from later instructions
+      if(!I->use_empty()){
+        Value *Val = findInstanceOfType(I, I->getType());
+        if(Val != 0){
+          I->replaceAllUsesWith(Val); } }
+      I->eraseFromParent();
+      errs() << "cut " << Inst1ID << "(" << Inst1 << ")"<< "\n";
+      return true;}
   };
 }
 
@@ -351,58 +166,34 @@ namespace {
     Insert() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      changed_p = false;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkCollect(&*I)) break;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkPlace(&*I)) break;
-
-      if(changed_p)
-        errs()<<"inserted "<<Inst2<<" before "<<Inst1<<"\n";
-      else
+      Instruction *temp;
+      Instruction *SI = walkCollect(Inst2, Inst2ID, M);
+      Instruction *DI = walkCollect(Inst1, Inst1ID, M);
+      if (SI == NULL or DI == NULL) {
         errs()<<"insertion failed\n";
+        return false;
+      }
 
-      return changed_p;
+      temp = SI->clone();
+      if (!temp->getType()->isVoidTy())
+        temp->setName(SI->getName()+".insert");
+      MDNode* N = SI->getMetadata("uniqueID");
+      Inst2ID = cast<MDString>(N->getOperand(0))->getString();
+
+      temp->insertBefore(&*DI); // insert temp before DI
+      replaceOperands(temp); // wire incoming edges of CFG into temp
+      // check if I generates a result which is used, if not then
+      // it is probably run for side effects and we don't need to
+      // wire the result of the copy of I to something later on
+      bool result_ignorable_p = SI->use_empty();
+      if(!result_ignorable_p)
+        useResult(temp); // wire outgoing results of temp into CFG
+      updateMetadata(temp, "i");
+
+      errs()<<"inserted "<< Inst2ID << "(" << Inst2 << ")"<< " before "
+            << Inst1ID << "(" << Inst1 << ")" << "\n";
+      return true;
     }
-
-  private:
-    bool result_ignorable_p;
-    bool changed_p;
-    Instruction *temp;
-
-    bool walkCollect(Function *F) {
-      unsigned count = 0;
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        count += 1;
-        if(count == Inst2) {
-          // check if I generates a result which is used, if not then
-          // it is probably run for side effects and we don't need to
-          // wire the result of the copy of I to something later on
-          result_ignorable_p = I->use_empty();
-          temp = I->clone();
-          if (!temp->getType()->isVoidTy())
-            temp->setName(I->getName()+".insert");
-
-          MDNode* N = I->getMetadata("uniqueID");
-          Inst2ID = cast<MDString>(N->getOperand(0))->getString();
-          return true; } }
-      return false; }
-
-    bool walkPlace(Function *F){
-      unsigned count = 0;
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        count += 1;
-        if(count == Inst1){
-          temp->insertBefore(&*I); // insert temp before I
-          replaceOperands(temp); // wire incoming edges of CFG into temp
-          if(!result_ignorable_p)
-            useResult(temp); // wire outgoing results of temp into CFG
-          changed_p = true;
-          updateMetadata(temp, 'i');
-          MDNode* N = I->getMetadata("uniqueID");
-          Inst1ID = cast<MDString>(N->getOperand(0))->getString();
-          return true; } }
-      return false; }
   };
 }
 
@@ -412,50 +203,26 @@ namespace {
     Replace() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      count = 0;
-      changed_p = false;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkCollect(&*I);
-      count = 0;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkPlace(&*I)) break;
-
-      if(changed_p) errs() << "replaced " << Inst1 << " with " << Inst2 << "\n";
-      else          errs() << "replace failed\n";
-
-      return changed_p; }
-
-  private:
-    unsigned count;
-    bool changed_p;
-    Instruction *temp;
-
-    void walkCollect(Function *F){
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        count += 1;
-        if (count == Inst2) {
-          temp = I->clone();
-          if (!temp->getType()->isVoidTy())
-            temp->setName(I->getName()+".replace1");
-          MDNode* N = I->getMetadata("uniqueID");
-          Inst2ID = cast<MDString>(N->getOperand(0))->getString();
-        }
+      Instruction *temp;
+      Instruction *SI = walkCollect(Inst2, Inst2ID, M);
+      Instruction *DI = walkCollect(Inst1, Inst1ID, M);
+      if (SI == NULL or DI == NULL) {
+        errs()<<"replace failed\n";
+        return false;
       }
-    }
-    bool walkPlace(Function *F){
-      for (Function::iterator B = F->begin(), E = F->end(); B != E; ++B) {
-        for (BasicBlock::iterator I = B->begin(), E = B->end(); I != E; ++I) {
-          count += 1;
-          if(count == Inst1){
-            MDNode* N = I->getMetadata("uniqueID");
-            Inst1ID = cast<MDString>(N->getOperand(0))->getString();
-            insertNOP(&*I);
-            ReplaceInstWithInst(I->getParent()->getInstList(), I, temp);
-            replaceOperands(temp);
-            updateMetadata(temp, 'r');
-            if(changed_p) return true;
-            changed_p = true; } } }
-      return false; }
+
+      temp = SI->clone();
+      if (!temp->getType()->isVoidTy())
+        temp->setName(SI->getName()+".replace1");
+
+      insertNOP(&*DI);
+      ReplaceInstWithInst(DI, temp);
+      replaceOperands(temp);
+      updateMetadata(temp, "r");
+
+      errs()<<"replaced "<< Inst1ID << "(" << Inst1 << ")"<< " with "
+            << Inst2ID << "(" << Inst2 << ")" << "\n";
+      return true; }
   };
 }
 
@@ -465,9 +232,20 @@ namespace {
     Swap() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      changed_p = false;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkCollect(&*I);
+      Instruction *temp1, *temp2;
+      Instruction *I1 = walkCollect(Inst1, Inst1ID, M);
+      Instruction *I2 = walkCollect(Inst2, Inst2ID, M);
+      if (I1 == NULL or I2 == NULL) {
+        errs()<<"swap failed\n";
+        return false;
+      }
+
+      temp1 = I1->clone();
+      if (!temp1->getType()->isVoidTy())
+        temp1->setName(I1->getName()+".swap1");
+      temp2 = I2->clone();
+      if (!temp2->getType()->isVoidTy())
+        temp2->setName(I2->getName()+".swap2");
 
       // confirm that the types match
       if(temp1->getType() != temp2->getType()) {
@@ -476,61 +254,21 @@ namespace {
           temp2->getType() << "\n";
         temp1->deleteValue();
         temp2->deleteValue();
-        return changed_p; }
+        return false; }
 
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        if(walkPlace(&*I)) break;
+      insertNOP(&*I1);
+      insertNOP(&*I2);
+      ReplaceInstWithInst(I2, temp1);
+      replaceOperands(temp1);
+      updateMetadata(temp1, "s");
+      ReplaceInstWithInst(I1, temp2);
+      replaceOperands(temp2);
+      updateMetadata(temp2, "s");
 
-      if(changed_p) errs() << "swapped " << Inst1 << " with " << Inst2 << "\n";
-      else          errs() << "swap failed\n";
+      errs()<<"swapped "<< Inst1ID << "(" << Inst1 << ")"<< " with "
+            << Inst2ID << "(" << Inst2 << ")" << "\n";
 
-      return changed_p; }
-
-  private:
-    bool changed_p;
-    Instruction *temp1, *temp2;
-
-    void walkCollect(Function *F){
-      unsigned count = 0;
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        count += 1;
-        if (count == Inst1) {
-          temp1 = I->clone();
-          if (!temp1->getType()->isVoidTy())
-            temp1->setName(I->getName()+".swap1");
-          MDNode* N = I->getMetadata("uniqueID");
-          Inst1ID = cast<MDString>(N->getOperand(0))->getString();
-        }
-        if (count == Inst2) {
-          temp2 = I->clone();
-          if (!temp2->getType()->isVoidTy())
-            temp2->setName(I->getName()+".swap2");
-          MDNode* N = I->getMetadata("uniqueID");
-          Inst2ID = cast<MDString>(N->getOperand(0))->getString();
-        }
-      }
-    }
-
-    bool walkPlace(Function *F){
-      unsigned count = 0;
-      for (Function::iterator B = F->begin(), E = F->end(); B != E; ++B) {
-        for (BasicBlock::iterator I = B->begin(), E = B->end(); I != E; ++I) {
-          count += 1;
-          if(count == Inst2){
-            insertNOP(&*I);
-            ReplaceInstWithInst(I->getParent()->getInstList(), I, temp1);
-            replaceOperands(temp1);
-            updateMetadata(temp1, 's');
-            if(changed_p) return true;
-            changed_p = true; }
-          if(count == Inst1){
-            insertNOP(&*I);
-            ReplaceInstWithInst(I->getParent()->getInstList(), I, temp2);
-            replaceOperands(temp2);
-            updateMetadata(temp2, 's');
-            if(changed_p) return true;
-            changed_p = true; } } }
-      return false; }
+      return true; }
   };
 }
 
