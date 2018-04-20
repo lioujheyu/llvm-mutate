@@ -134,7 +134,7 @@ void replaceOperands(Instruction *I){
 
 /***
  * Update I_in's uniqueID metadata. The uniqueID has a foramt like
- * <Originated Inst UID>.<Mode><instance>. This function is to address
+ * <Originated Inst UID>.<Mode><instance index>. This function is to address
  * how many instruction instance from this I_in's accesstor has existed
  * in the program, and update I_in's instance number accordingly.
  **/
@@ -158,6 +158,29 @@ void updateMetadata(Instruction *I_in, char mode)
   LLVMContext& C = I_in->getContext();
   N = MDNode::get(C, MDString::get(C, targetMD));
   I_in->setMetadata("uniqueID", N);
+}
+
+/***
+ * This function insert a floating add instruction as a nop
+ * The main usage of this nop instruction is like an anchor,
+ * pointing the position of one instruction before the
+ * instruction get cut, replace, or swap.
+ **/
+Instruction* insertNOP(Instruction *I) {
+  assert(I->getParent());
+
+  MDNode* N = I->getMetadata("uniqueID");
+  std::string MD = cast<MDString>(N->getOperand(0))->getString();
+  MD += ".d";
+
+  Value* zero = ConstantInt::get(Type::getInt8Ty(I->getContext()), 0);
+  Instruction *nop = BinaryOperator::Create(Instruction::Add, zero, zero, "nop", &*I);
+
+  LLVMContext& C = nop->getContext();
+  MDNode* Nnop = MDNode::get(C, MDString::get(C, MD));
+  nop->setMetadata("uniqueID", Nnop);
+
+  return nop;
 }
 
 namespace {
@@ -305,11 +328,13 @@ namespace {
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         count += 1;
         if(count == Inst1){
-          // TODO: once more thinking it would be good to glue basic
-          //       blocks when we delete a terminating instruction
-          Instruction *Inst = &*I;
+          MDNode* N = I->getMetadata("uniqueID");
+          Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+          insertNOP(&*I);
+
+          // decouple the dependence from later instructions
           if(!I->use_empty()){
-            Value *Val = findInstanceOfType(Inst,I->getType());
+            Value *Val = findInstanceOfType(&*I, I->getType());
             if(Val != 0){
               I->replaceAllUsesWith(Val); } }
           I->eraseFromParent();
@@ -424,6 +449,7 @@ namespace {
           if(count == Inst1){
             MDNode* N = I->getMetadata("uniqueID");
             Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+            insertNOP(&*I);
             ReplaceInstWithInst(I->getParent()->getInstList(), I, temp);
             replaceOperands(temp);
             updateMetadata(temp, 'r');
@@ -491,12 +517,14 @@ namespace {
         for (BasicBlock::iterator I = B->begin(), E = B->end(); I != E; ++I) {
           count += 1;
           if(count == Inst2){
+            insertNOP(&*I);
             ReplaceInstWithInst(I->getParent()->getInstList(), I, temp1);
             replaceOperands(temp1);
             updateMetadata(temp1, 's');
             if(changed_p) return true;
             changed_p = true; }
           if(count == Inst1){
+            insertNOP(&*I);
             ReplaceInstWithInst(I->getParent()->getInstList(), I, temp2);
             replaceOperands(temp2);
             updateMetadata(temp2, 's');
