@@ -140,9 +140,9 @@ namespace {
     Cut() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      Instruction *I = walkCollect(Inst1, Inst1ID, M);
+      Instruction *I = walkPosition(Inst1, Inst1ID, M);
       if (I == NULL) {
-        errs() << "cut failed\n";
+        errs() << "cut failed. Cannot find " << Inst1 << "\n";
         return EXIT_FAILURE; }
 
       insertNOP(I);
@@ -165,11 +165,13 @@ namespace {
     bool runOnModule(Module &M){
       Instruction *temp;
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
-      Instruction *DI = walkCollect(Inst1, Inst1ID, M);
+      Instruction *DI = walkPosition(Inst1, Inst1ID, M);
       if (SI == NULL or DI == NULL) {
-        errs()<<"insertion failed\n";
-        return EXIT_FAILURE;
-      }
+        errs()<<"insertion failed. Cannot find ";
+        if (DI == NULL) errs()<<Inst1 << " ";
+        if (SI == NULL) errs()<<Inst2 << " ";
+        errs() << "\n";
+        return EXIT_FAILURE; }
 
       temp = SI->clone();
       if (!temp->getType()->isVoidTy())
@@ -201,11 +203,13 @@ namespace {
     bool runOnModule(Module &M){
       Instruction *temp;
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
-      Instruction *DI = walkCollect(Inst1, Inst1ID, M);
+      Instruction *DI = walkPosition(Inst1, Inst1ID, M);
       if (SI == NULL or DI == NULL) {
         errs()<<"replace failed\n";
-        return EXIT_FAILURE;
-      }
+        if (DI == NULL) errs()<<Inst1 << " ";
+        if (SI == NULL) errs()<<Inst2 << " ";
+        errs() << "\n";
+        return EXIT_FAILURE; }
 
       temp = SI->clone();
       if (!temp->getType()->isVoidTy())
@@ -228,12 +232,14 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp1, *temp2;
-      Instruction *I1 = walkCollect(Inst1, Inst1ID, M);
-      Instruction *I2 = walkCollect(Inst2, Inst2ID, M);
+      Instruction *I1 = walkPosition(Inst1, Inst1ID, M);
+      Instruction *I2 = walkPosition(Inst2, Inst2ID, M);
       if (I1 == NULL or I2 == NULL) {
         errs()<<"swap failed\n";
-        return EXIT_FAILURE;
-      }
+        if (I1 == NULL) errs()<<Inst1 << " ";
+        if (I2 == NULL) errs()<<Inst2 << " ";
+        errs() << "\n";
+        return EXIT_FAILURE; }
 
       temp1 = I1->clone();
       if (!temp1->getType()->isVoidTy())
