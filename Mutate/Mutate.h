@@ -176,7 +176,48 @@ Instruction* insertNOP(Instruction *I) {
   return nop;
 }
 
-Instruction* walkCollect(std::string inst_desc, std::string &UID, Module &M)
+/**
+ * This function return the same type of instruction where the inst_desc demand.
+ * Since the demand does not require accurate location, only target instruction,
+ * It will return any instruction in the same instruction family that inst_desc describes.
+ * For example, if the inst_desc is an UID as U14.i1.r1, the
+ * function can return any instruction that has UID with U14 since they are
+ * in the same instructions family.
+ **/
+Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
+{
+    unsigned count = 0;
+    for(Function &F: M) {
+    for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+        if (I->getName().find("nop") != StringRef::npos)
+            continue;
+        count += 1;
+        if (inst_desc[0] != 'U') { // number
+            if (count == std::stoul(inst_desc)) {
+                MDNode* N = I->getMetadata("uniqueID");
+                UID = cast<MDString>(N->getOperand(0))->getString();
+                return &*I;
+            }
+        }
+        else { // unique ID
+            MDNode* N = I->getMetadata("uniqueID");
+            StringRef ID = cast<MDString>(N->getOperand(0))->getString();
+            std::pair<StringRef, StringRef> res = inst_desc.split('.');
+            if ((ID.find(res.first) != StringRef::npos) &&
+                (ID.find(".d") == StringRef::npos)) { // Cannot be a deleted instruction
+                UID = inst_desc;
+                return &*I;
+            }
+        }
+    }
+    }
+    return NULL;
+}
+
+/**
+ * This function return the instruction that fits inst_desc exactly
+ **/
+Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
 {
     unsigned count = 0;
     for(Function &F: M) {
