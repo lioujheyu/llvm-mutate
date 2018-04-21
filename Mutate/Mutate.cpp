@@ -143,7 +143,7 @@ namespace {
       Instruction *I = walkCollect(Inst1, Inst1ID, M);
       if (I == NULL) {
         errs() << "cut failed\n";
-        return false; }
+        return EXIT_FAILURE; }
 
       MDNode* N = I->getMetadata("uniqueID");
       Inst1ID = cast<MDString>(N->getOperand(0))->getString();
@@ -156,7 +156,7 @@ namespace {
           I->replaceAllUsesWith(Val); } }
       I->eraseFromParent();
       errs() << "cut " << Inst1ID << "(" << Inst1 << ")"<< "\n";
-      return true;}
+      return EXIT_SUCCESS;}
   };
 }
 
@@ -171,7 +171,7 @@ namespace {
       Instruction *DI = walkCollect(Inst1, Inst1ID, M);
       if (SI == NULL or DI == NULL) {
         errs()<<"insertion failed\n";
-        return false;
+        return EXIT_FAILURE;
       }
 
       temp = SI->clone();
@@ -190,9 +190,9 @@ namespace {
         useResult(temp); // wire outgoing results of temp into CFG
       updateMetadata(temp, "i");
 
-      errs()<<"inserted "<< Inst2ID << "(" << Inst2 << ")"<< " before "
-            << Inst1ID << "(" << Inst1 << ")" << "\n";
-      return true;
+      errs()<<"inserted "<< Inst1ID << "(" << Inst1 << ")" << ","
+            << Inst2ID << "(" << Inst2 << ")" << "\n";
+      return EXIT_SUCCESS;
     }
   };
 }
@@ -208,7 +208,7 @@ namespace {
       Instruction *DI = walkCollect(Inst1, Inst1ID, M);
       if (SI == NULL or DI == NULL) {
         errs()<<"replace failed\n";
-        return false;
+        return EXIT_FAILURE;
       }
 
       temp = SI->clone();
@@ -220,9 +220,9 @@ namespace {
       replaceOperands(temp);
       updateMetadata(temp, "r");
 
-      errs()<<"replaced "<< Inst1ID << "(" << Inst1 << ")"<< " with "
+      errs()<<"replaced "<< Inst1ID << "(" << Inst1 << ")"<< ","
             << Inst2ID << "(" << Inst2 << ")" << "\n";
-      return true; }
+      return EXIT_SUCCESS; }
   };
 }
 
@@ -237,7 +237,7 @@ namespace {
       Instruction *I2 = walkCollect(Inst2, Inst2ID, M);
       if (I1 == NULL or I2 == NULL) {
         errs()<<"swap failed\n";
-        return false;
+        return EXIT_FAILURE;
       }
 
       temp1 = I1->clone();
@@ -254,7 +254,7 @@ namespace {
           temp2->getType() << "\n";
         temp1->deleteValue();
         temp2->deleteValue();
-        return false; }
+        return EXIT_FAILURE; }
 
       insertNOP(&*I1);
       insertNOP(&*I2);
@@ -265,10 +265,10 @@ namespace {
       replaceOperands(temp2);
       updateMetadata(temp2, "s");
 
-      errs()<<"swapped "<< Inst1ID << "(" << Inst1 << ")"<< " with "
+      errs()<<"swapped "<< Inst1ID << "(" << Inst1 << ")"<< ","
             << Inst2ID << "(" << Inst2 << ")" << "\n";
 
-      return true; }
+      return EXIT_SUCCESS; }
   };
 }
 
