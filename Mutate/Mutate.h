@@ -176,7 +176,7 @@ Instruction* insertNOP(Instruction *I) {
   return nop;
 }
 
-Instruction* walkCollect(unsigned idx, std::string &desc, Module &M)
+Instruction* walkCollect(std::string inst_desc, std::string &UID, Module &M)
 {
     unsigned count = 0;
     for(Function &F: M) {
@@ -184,18 +184,20 @@ Instruction* walkCollect(unsigned idx, std::string &desc, Module &M)
         if (I->getName().find("nop") != StringRef::npos)
             continue;
         count += 1;
-        if (idx != 0) {
-            if (count == idx) {
+        if (inst_desc[0] != 'U') { // number
+            if (count == std::stoul(inst_desc)) {
                 MDNode* N = I->getMetadata("uniqueID");
-                desc = cast<MDString>(N->getOperand(0))->getString();
+                UID = cast<MDString>(N->getOperand(0))->getString();
                 return &*I;
             }
         }
-        else {
+        else { // unique ID
             MDNode* N = I->getMetadata("uniqueID");
             std::string ID = cast<MDString>(N->getOperand(0))->getString();
-            if (desc.compare(ID) == 0)
+            if (inst_desc.compare(ID) == 0) {
+                UID = inst_desc;
                 return &*I;
+            }
         }
     }
     }

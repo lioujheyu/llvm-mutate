@@ -3,10 +3,10 @@
 
 using namespace llvm;
 
-cl::opt<unsigned> Inst1("inst1", cl::init(0), cl::desc("first statement to mutate"));
+cl::opt<std::string> Inst1("inst1", cl::init("0"), cl::desc("first statement to mutate"));
 cl::opt<std::string> Inst1ID("inst1ID", cl::init(""), cl::desc("The Unique ID of first statement to mutate"));
 
-cl::opt<unsigned> Inst2("inst2", cl::init(0), cl::desc("second statement to mutate"));
+cl::opt<std::string> Inst2("inst2", cl::init("0"), cl::desc("second statement to mutate"));
 cl::opt<std::string> Inst2ID("inst2ID", cl::init(""), cl::desc("The Unique ID of first statement to mutate"));
 
 namespace {
@@ -145,17 +145,14 @@ namespace {
         errs() << "cut failed\n";
         return EXIT_FAILURE; }
 
-      MDNode* N = I->getMetadata("uniqueID");
-      Inst1ID = cast<MDString>(N->getOperand(0))->getString();
       insertNOP(I);
-
       // decouple the dependence from later instructions
       if(!I->use_empty()){
         Value *Val = findInstanceOfType(I, I->getType());
         if(Val != 0){
           I->replaceAllUsesWith(Val); } }
       I->eraseFromParent();
-      errs() << "cut " << Inst1ID << "(" << Inst1 << ")"<< "\n";
+      errs() << "cut " << Inst1ID << "\n";
       return EXIT_SUCCESS;}
   };
 }
@@ -190,8 +187,7 @@ namespace {
         useResult(temp); // wire outgoing results of temp into CFG
       updateMetadata(temp, "i");
 
-      errs()<<"inserted "<< Inst1ID << "(" << Inst1 << ")" << ","
-            << Inst2ID << "(" << Inst2 << ")" << "\n";
+      errs()<<"inserted " << Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS;
     }
   };
@@ -220,8 +216,7 @@ namespace {
       replaceOperands(temp);
       updateMetadata(temp, "r");
 
-      errs()<<"replaced "<< Inst1ID << "(" << Inst1 << ")"<< ","
-            << Inst2ID << "(" << Inst2 << ")" << "\n";
+      errs()<<"replaced "<< Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS; }
   };
 }
@@ -265,8 +260,7 @@ namespace {
       replaceOperands(temp2);
       updateMetadata(temp2, "s");
 
-      errs()<<"swapped "<< Inst1ID << "(" << Inst1 << ")"<< ","
-            << Inst2ID << "(" << Inst2 << ")" << "\n";
+      errs()<<"swapped " << Inst1ID << "," << Inst2ID << "\n";
 
       return EXIT_SUCCESS; }
   };
