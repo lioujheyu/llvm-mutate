@@ -181,7 +181,7 @@ Instruction* walkCollect(unsigned idx, std::string &desc, Module &M)
     unsigned count = 0;
     for(Function &F: M) {
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        if (I->getName().compare("nop") == 0)
+        if (I->getName().find("nop") != StringRef::npos)
             continue;
         count += 1;
         if (idx != 0) {
