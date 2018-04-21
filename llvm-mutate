@@ -42,7 +42,11 @@ RUN_RC=
 LINK_RC=
 
 init(){ if [ $FIRST -eq 0 ];then FIRST=1; RAW=$(cat -);fi; }
-run(){ init; RAW="$(echo "$RAW"|opt ${OPT_FLAGS} $@|llvm-dis)"; RUN_RC=$?; }
+run(){ 
+  init 
+  RAW="$(echo "$RAW"|opt ${OPT_FLAGS} $@|llvm-dis)"
+  RUN_RC=$(( PIPESTATUS[0] + PIPESTATUS[1] + PIPESTATUS[2]))
+}
 graph(){
     for graph in $(run $1 3>&1 >/dev/null 2>&3 \
         |sed "s/Writing '//;s/'...//");do

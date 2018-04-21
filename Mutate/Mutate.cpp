@@ -32,7 +32,7 @@ namespace {
     int unsigned count;
     void walkFunction(Function *F){
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        if (I->getName().compare("nop") != 0)
+        if (I->getName().find("nop") == StringRef::npos)
           count += 1;
       }
     }
