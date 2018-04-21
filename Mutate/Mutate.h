@@ -215,7 +215,8 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
 }
 
 /**
- * This function return the instruction that fits inst_desc exactly
+ * This function return the instruction that fits inst_desc.
+ * Allow to return the nop if the target instruction has been deleted.
  **/
 Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
 {
@@ -235,7 +236,39 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
         else { // unique ID
             MDNode* N = I->getMetadata("uniqueID");
             std::string ID = cast<MDString>(N->getOperand(0))->getString();
-            if (inst_desc.compare(ID) == 0) {
+            if ((ID.compare(inst_desc) == 0) ||
+                (ID.compare(inst_desc + ".d") == 0)  ) {
+                UID = inst_desc;
+                return &*I;
+            }
+        }
+    }
+    }
+    return NULL;
+}
+
+/**
+ * This function return the instruction that fits inst_desc exactly.
+ **/
+Instruction* walkExact(std::string inst_desc, std::string &UID, Module &M)
+{
+    unsigned count = 0;
+    for(Function &F: M) {
+    for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+        if (I->getName().find("nop") != StringRef::npos)
+            continue;
+        count += 1;
+        if (inst_desc[0] != 'U') { // number
+            if (count == std::stoul(inst_desc)) {
+                MDNode* N = I->getMetadata("uniqueID");
+                UID = cast<MDString>(N->getOperand(0))->getString();
+                return &*I;
+            }
+        }
+        else { // unique ID
+            MDNode* N = I->getMetadata("uniqueID");
+            std::string ID = cast<MDString>(N->getOperand(0))->getString();
+            if ((inst_desc.compare(ID) == 0)) {
                 UID = inst_desc;
                 return &*I;
             }

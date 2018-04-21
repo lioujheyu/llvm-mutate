@@ -140,7 +140,7 @@ namespace {
     Cut() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      Instruction *I = walkPosition(Inst1, Inst1ID, M);
+      Instruction *I = walkExact(Inst1, Inst1ID, M);
       if (I == NULL) {
         errs() << "cut failed. Cannot find " << Inst1 << "\n";
         return EXIT_FAILURE; }
@@ -205,7 +205,7 @@ namespace {
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
       if (SI == NULL or DI == NULL) {
-        errs()<<"replace failed\n";
+        errs()<<"replace failed. Cannot find ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
@@ -232,10 +232,10 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp1, *temp2;
-      Instruction *I1 = walkPosition(Inst1, Inst1ID, M);
-      Instruction *I2 = walkPosition(Inst2, Inst2ID, M);
+      Instruction *I1 = walkExact(Inst1, Inst1ID, M);
+      Instruction *I2 = walkExact(Inst2, Inst2ID, M);
       if (I1 == NULL or I2 == NULL) {
-        errs()<<"swap failed\n";
+        errs()<<"swap failed. Cannot find ";
         if (I1 == NULL) errs()<<Inst1 << " ";
         if (I2 == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
