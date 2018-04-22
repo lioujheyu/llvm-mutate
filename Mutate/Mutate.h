@@ -203,7 +203,7 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
             MDNode* N = I->getMetadata("uniqueID");
             StringRef ID = cast<MDString>(N->getOperand(0))->getString();
             std::pair<StringRef, StringRef> res = inst_desc.split('.');
-            if (ID.find(".d") == StringRef::npos) continue; // Cannot be a deleted instruction
+            if (ID.find(".d") != StringRef::npos) continue; // Cannot be a deleted instruction
             if ((ID.find(std::string(res.first) + ".") != StringRef::npos) || 
                 (inst_desc.compare(ID) == 0)) { 
                 UID = inst_desc;
