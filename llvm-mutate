@@ -38,14 +38,14 @@ OUT=""
 FIRST=0
 RAW=""
 PTX=
-RUN_RC=
-LINK_RC=
+RUN_RC=0
+LINK_RC=0
 
 init(){ if [ $FIRST -eq 0 ];then FIRST=1; RAW=$(cat -);fi; }
 run(){ 
   init 
   RAW="$(echo "$RAW"|opt ${OPT_FLAGS} $@|llvm-dis)"
-  RUN_RC=$(( PIPESTATUS[0] + PIPESTATUS[1] + PIPESTATUS[2]))
+  RUN_RC=$(( RUN_RC + PIPESTATUS[0] + PIPESTATUS[1] + PIPESTATUS[2]))
 }
 graph(){
     for graph in $(run $1 3>&1 >/dev/null 2>&3 \
