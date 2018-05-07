@@ -151,6 +151,7 @@ namespace {
         Value *Val = findInstanceOfType(I, I->getType());
         if(Val != 0){
           I->replaceAllUsesWith(Val); } }
+      // TODO: have a function as a recycle bin to store deleted inst
       I->eraseFromParent();
       errs() << "cut " << Inst1ID << "\n";
       return EXIT_SUCCESS;}
