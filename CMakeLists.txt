@@ -4,6 +4,7 @@ set(CMAKE_C_FLAGS "-fPIC")
 set(CMAKE_CXX_FLAGS "-fPIC -fno-rtti -std=c++11")
 
 find_package(LLVM)
+list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 
 include(AddLLVM)
 
