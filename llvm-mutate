@@ -16,6 +16,7 @@
 #  -c,--cut -------- cut the given instruction
 #  -r,--replace ---- replace the first inst. with the second
 #  -i,--insert ----- copy the second inst. before the first
+#  -m,--move ------- move the second inst. before the first
 #  -s,--swap ------- swap the given instructions
 #  -l,--link ------- link the result into an executable
 #  -o,--out -------- write output to specified file
@@ -42,8 +43,8 @@ RUN_RC=0
 LINK_RC=0
 
 init(){ if [ $FIRST -eq 0 ];then FIRST=1; RAW=$(cat -);fi; }
-run(){ 
-  init 
+run(){
+  init
   RAW="$(echo "$RAW"|opt ${OPT_FLAGS} $@|llvm-dis)"
   RUN_RC=$(( RUN_RC + PIPESTATUS[0] + PIPESTATUS[1] + PIPESTATUS[2]))
 }
@@ -65,8 +66,8 @@ getopt -T > /dev/null
 if [ $? -eq 4 ]; then
     # GNU enhanced getopt is available
     eval set -- $(getopt \
-        -o hILntT:gGc:r:i:s:lo:f: \
-        -l help,ids,cfg,call-graph,list,name,trace,ptx,trace-obj:,cut:,replace:,insert:,swap:,link,out:,file: \
+        -o hILntT:gGc:r:i:m:s:lo:f: \
+        -l help,ids,cfg,call-graph,list,name,trace,ptx,trace-obj:,cut:,replace:,insert:,move:,swap:,link,out:,file: \
         -- "$@" || echo "$HELP_TEXT" && exit 1;)
 else
     # Original getopt is available
@@ -96,6 +97,10 @@ while [ $# -gt 0 ];do
                 -inst2="$(echo $2|cut -d, -f2)"; shift;;
         -i|--insert)
             run -insert \
+                -inst1="$(echo $2|cut -d, -f1)" \
+                -inst2="$(echo $2|cut -d, -f2)"; shift;;
+        -m|--move)
+            run -move \
                 -inst1="$(echo $2|cut -d, -f1)" \
                 -inst2="$(echo $2|cut -d, -f2)"; shift;;
         -s|--swap)

@@ -227,6 +227,48 @@ namespace {
 }
 
 namespace {
+  struct Move : public ModulePass {
+    static char ID; // pass identification
+    Move() : ModulePass(ID) {}
+
+    bool runOnModule(Module &M){
+      Instruction *temp;
+      Instruction *SI = walkExact(Inst2, Inst2ID, M);
+      Instruction *DI = walkPosition(Inst1, Inst1ID, M);
+      if (SI == NULL or DI == NULL) {
+        errs()<<"Move failed. Cannot find ";
+        if (DI == NULL) errs()<<Inst1 << " ";
+        if (SI == NULL) errs()<<Inst2 << " ";
+        errs() << "\n";
+        return EXIT_FAILURE; }
+
+      temp = SI->clone();
+      if (!temp->getType()->isVoidTy())
+        temp->setName(SI->getName()+".move");
+      MDNode* N = SI->getMetadata("uniqueID");
+      Inst2ID = cast<MDString>(N->getOperand(0))->getString();
+
+      temp->insertBefore(&*DI); // insert temp before DI
+      replaceOperands(temp);
+      bool result_ignorable_p = SI->use_empty();
+      if(!result_ignorable_p)
+        useResult(temp);
+      // Delete the source instruction if it is there
+      insertNOP(SI);
+      if(!SI->use_empty()){
+        Value *Val = findInstanceOfType(SI, SI->getType());
+        if(Val != 0){
+          SI->replaceAllUsesWith(Val); } }
+      // TODO: have a function as a recycle bin to store deleted inst
+      SI->eraseFromParent();
+      updateMetadata(temp, "m");
+
+      errs()<<"moved " << Inst1ID << "," << Inst2ID << "\n";
+      return EXIT_SUCCESS; }
+  };
+}
+
+namespace {
   struct Swap : public ModulePass {
     static char ID; // pass identification
     Swap() : ModulePass(ID) {}
@@ -279,6 +321,7 @@ char Name::ID = 0;
 char Trace::ID = 0;
 char Cut::ID = 0;
 char Insert::ID = 0;
+char Move::ID = 0;
 char Replace::ID = 0;
 char Swap::ID = 0;
 static RegisterPass<Ids>     S("ids",     "print the number of instructions");
@@ -288,4 +331,5 @@ static RegisterPass<Trace>   V("trace",   "instrument to print inst. trace");
 static RegisterPass<Cut>     W("cut",     "cut instruction number inst1");
 static RegisterPass<Insert>  X("insert",  "insert inst2 before inst1");
 static RegisterPass<Replace> Y("replace", "replace inst1 with inst2");
+static RegisterPass<Move>    ZA("move",    "move inst2 before inst1");
 static RegisterPass<Swap>    Z("swap",    "swap inst1 and inst2");
