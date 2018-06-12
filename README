@@ -18,19 +18,14 @@ Installation
   installed with cmake.  However, this does *not* require access to
   the LLVM source tree.
 
-  The HEAD of the LLVM svn repository (currently revision 182214) is
-  known to work.  Branch llvm-3.2 of this repository compiles against
-  LLVM version 3.2.
+  llvm-4 and HEAD of llvm repository, which is llvm-7, are known to
+  Branch llvm-3.2 of this repository compiles against LLVM version 3.2.
 
-  Run the following to build and install llvm-mutate, changing the
-  llvm/cmake path /usr/local/share/llvm/cmake to the appropriate path
-  on your system. If the llvm is compiled and installed from the 
-  source, it is likely the path to llvm/cmake should be /usr/local/
-  lib/cmake/llvm
+  Run the following to build and install llvm-mutate.
 
     mkdir build
     cd build
-    cmake -DCMAKE_MODULE_PATH=/usr/local/share/llvm/cmake ../
+    cmake ../
     make
     sudo make install
 
