@@ -209,7 +209,11 @@ namespace {
       Instruction *temp;
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
-      if (SI == NULL or DI == NULL) {
+      Function* F;
+      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
+        F = cast<CallInst>(SI)->getCalledFunction();
+      }
+      if (SI == NULL or DI == NULL or F == NULL) {
         errs()<<"replace failed. Cannot find ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
@@ -239,7 +243,11 @@ namespace {
       Instruction *temp;
       Instruction *SI = walkExact(Inst2, Inst2ID, M);
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
-      if (SI == NULL or DI == NULL) {
+      Function* F;
+      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
+        F = cast<CallInst>(SI)->getCalledFunction();
+      }
+      if (SI == NULL or DI == NULL or F == NULL) {
         errs()<<"Move failed. Cannot find ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
@@ -281,7 +289,14 @@ namespace {
       Instruction *temp1, *temp2;
       Instruction *I1 = walkExact(Inst1, Inst1ID, M);
       Instruction *I2 = walkExact(Inst2, Inst2ID, M);
-      if (I1 == NULL or I2 == NULL) {
+      Function *F1, *F2;
+      if (isa<CallInst>(I1)) { // TODO: copy indirect invocation
+        F1 = cast<CallInst>(I1)->getCalledFunction();
+      }
+      if (isa<CallInst>(I2)) { // TODO: copy indirect invocation
+        F2 = cast<CallInst>(I2)->getCalledFunction();
+      }
+      if (I1 == NULL or I2 == NULL or F1 == NULL or F2 == NULL) {
         errs()<<"swap failed. Cannot find ";
         if (I1 == NULL) errs()<<Inst1 << " ";
         if (I2 == NULL) errs()<<Inst2 << " ";
