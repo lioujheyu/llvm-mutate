@@ -166,8 +166,12 @@ namespace {
     bool runOnModule(Module &M){
       Instruction *temp;
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
+      Function* F;
+      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
+        F = cast<CallInst>(SI)->getCalledFunction();
+      }
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
-      if (SI == NULL or DI == NULL) {
+      if (SI == NULL or DI == NULL or F == NULL) {
         errs()<<"insertion failed. Cannot find ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
