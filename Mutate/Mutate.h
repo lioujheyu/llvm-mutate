@@ -10,23 +10,30 @@
 
 using namespace llvm;
 
-// Use the result of instruction I somewhere in the basic block in
+// Use the result of instruction tI somewhere in the basic block in
 // which it is defined.  Ideally in the immediately subsequent
 // instruction.
-void useResult(Instruction *I){
+void useResult(Instruction *tI){
   // we don't care if already used, use it again!
   // if(!I->use_empty()){ errs()<<"already used!\n" };
-  BasicBlock *B = I->getParent();
-  for (Instruction &i : *B) {
-    Instruction *Inst = &i;
-    int counter = -1;
-    for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e; ++i){
-      counter++;
-      Value *v = *i;
-      if (v->getType() == I->getType()){
-        Inst->setOperand(counter, I);
-        return; } } }
-  errs()<<"could find no use for result\n";
+    Function *F = tI->getParent()->getParent();
+    inst_iterator I;
+    for (I=inst_begin(F); I != inst_end(F); ++I) {
+        if (tI == &*I)
+            break;
+    }
+    for (I; I != inst_end(F); ++I) {
+        int counter = -1;
+        for (User::op_iterator Iop = I->op_begin(), e = I->op_end(); Iop != e; ++Iop){
+            counter++;
+            Value *v = *Iop;
+            if (v->getType() == tI->getType()){
+                I->setOperand(counter, tI);
+                return;
+            }
+        }
+    }
+    errs()<<"could find no use for result\n";
 }
 
 // Find a value of Type T which can be used at Instruction I.  Search
