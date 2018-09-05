@@ -226,6 +226,9 @@ namespace {
 
       insertNOP(&*DI);
       ReplaceInstWithInst(DI, temp);
+      bool result_ignorable_p = SI->use_empty();
+      if(!result_ignorable_p)
+        useResult(temp); // wire outgoing results of temp into CFG
       replaceOperands(temp);
       updateMetadata(temp, "r");
 
@@ -321,11 +324,17 @@ namespace {
 
       insertNOP(&*I1);
       insertNOP(&*I2);
+      bool result_ignorable_p1 = I1->use_empty();
+      bool result_ignorable_p2 = I2->use_empty();
       ReplaceInstWithInst(I2, temp1);
       replaceOperands(temp1);
+      if(!result_ignorable_p1)
+        useResult(temp1);
       updateMetadata(temp1, "s");
       ReplaceInstWithInst(I1, temp2);
       replaceOperands(temp2);
+      if(!result_ignorable_p2)
+        useResult(temp2);
       updateMetadata(temp2, "s");
 
       errs()<<"swapped " << Inst1ID << "," << Inst2ID << "\n";
