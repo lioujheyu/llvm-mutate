@@ -219,6 +219,10 @@ namespace {
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
+      if (DI->getType() != SI->getType()) {
+        errs()<<"replace failed. could find no use for the result.\n";
+        return EXIT_FAILURE;
+      }
 
       temp = SI->clone();
       if (!temp->getType()->isVoidTy())
