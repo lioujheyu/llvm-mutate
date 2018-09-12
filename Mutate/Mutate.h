@@ -75,19 +75,22 @@ Value *findInstanceOfType(Instruction *I, Type *T){
   // TODO: types which could be replaced with sane default
   //       - result of comparisons
   //       - nulls or zeros for number types
+  //         (This is questionable. Why use zero instead of one?)
   // pulled from getNullValue
   switch (T->getTypeID()) {
   case Type::IntegerTyID:
+  case Type::VectorTyID:
+    return Constant::getIntegerValue(T, APInt(32, 1));
   case Type::HalfTyID:
   case Type::FloatTyID:
   case Type::DoubleTyID:
+    return ConstantFP::get(T, StringRef("1"));
   case Type::X86_FP80TyID:
   case Type::FP128TyID:
   case Type::PPC_FP128TyID:
   case Type::PointerTyID:
   case Type::StructTyID:
   case Type::ArrayTyID:
-  case Type::VectorTyID:
     return Constant::getNullValue(T);
   default:
     return 0;
