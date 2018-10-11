@@ -93,6 +93,8 @@ namespace {
         LLVMContext& C = I->getContext();
         MDNode* N = MDNode::get(C, MDString::get(C, uniqueID));
         I->setMetadata("uniqueID", N);
+        if (!I->getType()->isVoidTy())
+          I->setName(uniqueID);
       }
     }
   };
@@ -242,6 +244,31 @@ namespace {
 }
 
 namespace {
+  struct OPRepl : public ModulePass {
+    static char ID; // pass identification
+    OPRepl() : ModulePass(ID) {}
+
+    bool runOnModule(Module &M){
+      int err = replaceOperands(Inst1, Inst2, M);
+      if (err == 0)
+        return EXIT_SUCCESS;
+
+      if (err == -1)
+        errs() << "oprepl failed. cannot find" << Inst1 << "\n";
+      else if (err == -2)
+        errs() << "oprepl failed. out of operand index range" << "\n";
+      else if (err == -3)
+        errs() << "oprepl failed. source instruction does not have an output" << "\n";
+      else if (err == -4)
+        errs() << "oprepl failed. type mismatched" << "\n";
+      else if (err == -5)
+        errs() << "oprepl failed. Source and Destination are the same" << "\n";
+      return EXIT_FAILURE;
+    }
+  };
+}
+
+namespace {
   struct Move : public ModulePass {
     static char ID; // pass identification
     Move() : ModulePass(ID) {}
@@ -355,6 +382,7 @@ char Cut::ID = 0;
 char Insert::ID = 0;
 char Move::ID = 0;
 char Replace::ID = 0;
+char OPRepl::ID = 0;
 char Swap::ID = 0;
 static RegisterPass<Ids>     S("ids",     "print the number of instructions");
 static RegisterPass<List>    T("list",    "list instruction's type and id");
@@ -363,5 +391,6 @@ static RegisterPass<Trace>   V("trace",   "instrument to print inst. trace");
 static RegisterPass<Cut>     W("cut",     "cut instruction number inst1");
 static RegisterPass<Insert>  X("insert",  "insert inst2 before inst1");
 static RegisterPass<Replace> Y("replace", "replace inst1 with inst2");
-static RegisterPass<Move>    ZA("move",    "move inst2 before inst1");
+static RegisterPass<Move>    ZA("move",   "move inst2 before inst1");
+static RegisterPass<OPRepl>  ZB("oprepl", "replace operand with inst");
 static RegisterPass<Swap>    Z("swap",    "swap inst1 and inst2");

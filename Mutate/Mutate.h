@@ -289,3 +289,60 @@ Instruction* walkExact(std::string inst_desc, std::string &UID, Module &M)
     }
     return NULL;
 }
+
+// int replaceOperands(Value* DV, Value* SV)
+// {
+//     if (DV->getType()->getTypeID() != SV->getType()->getTypeID())
+//         return -1;
+
+//     DV->get
+// }
+
+int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
+{
+    std::string dummy;
+    // decompose destination description into inst and operand
+    StringRef dstInstBase = (StringRef(dst_desc)).rsplit('.').first;
+    StringRef dstOP = (StringRef(dst_desc)).rsplit('.').second;
+    assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
+    unsigned OPindex = std::stoi(dstOP.drop_front(2));// remove "OP"
+    Instruction *DI = walkExact(dstInstBase, dummy, M);
+    if (DI == NULL)
+        return -1;
+    if (OPindex >= DI->getNumOperands())
+        return -2;
+    Value *DV = DI->getOperand(OPindex);
+
+    Value *SV;
+    if (src_desc[0] == 'U') {
+        SV = cast<Value>(walkExact(src_desc, dummy, M));
+        if (SV->getType()->isVoidTy())
+            return -3;
+        if (DV->getType()->getTypeID() != SV->getType()->getTypeID())
+            return -4;
+        if (DV == SV)
+            return -5;
+    }
+    else { // Constant value
+        switch(DV->getType()->getTypeID()) {
+        case Type::IntegerTyID: case Type::VectorTyID:
+            SV = Constant::getIntegerValue(DV->getType(), APInt(32, 1));
+            break;
+        case Type::HalfTyID:    case Type::FloatTyID:
+        case Type::DoubleTyID:
+            SV =  ConstantFP::get(DV->getType(), StringRef("1"));
+            break;
+        case Type::X86_FP80TyID:  case Type::FP128TyID:
+        case Type::PPC_FP128TyID: case Type::PointerTyID:
+        case Type::StructTyID:    case Type::ArrayTyID:
+            SV = Constant::getNullValue(DV->getType());
+            break;
+        default:
+            assert(0);
+        }
+    }
+
+    DI->setOperand(OPindex, SV);
+    errs()<<"opreplaced "<< dst_desc << "," << src_desc << "\n";
+    return 0;
+}

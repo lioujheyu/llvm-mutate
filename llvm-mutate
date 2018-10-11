@@ -66,13 +66,13 @@ getopt -T > /dev/null
 if [ $? -eq 4 ]; then
     # GNU enhanced getopt is available
     eval set -- $(getopt \
-        -o hILntT:gGc:r:i:m:s:lo:f: \
-        -l help,ids,cfg,call-graph,list,name,trace,ptx,trace-obj:,cut:,replace:,insert:,move:,swap:,link,out:,file: \
+        -o hILntT:gGc:r:p:i:m:s:lo:f: \
+        -l help,ids,cfg,call-graph,list,name,trace,ptx,trace-obj:,cut:,replace:,replaceop:,insert:,move:,swap:,link,out:,file: \
         -- "$@" || echo "$HELP_TEXT" && exit 1;)
 else
     # Original getopt is available
     HELP_TEXT=$(echo "$HELP_TEXT"|sed 's/,-[^ ]* / ---/;s/\(........\)-*/\1/')
-    eval set -- $(getopt hILntT:gGc:r:i:s:lo:f: "$@" || echo "$HELP_TEXT" && exit 1;) 2>/dev/null
+    eval set -- $(getopt hILntT:gGc:r:p:i:m:s:lo:f: "$@" || echo "$HELP_TEXT" && exit 1;) 2>/dev/null
 fi
 
 ## Process Options
@@ -93,6 +93,10 @@ while [ $# -gt 0 ];do
         -c|--cut)   run -cut -inst1="$2"; shift;;
         -r|--replace)
             run -replace \
+                -inst1="$(echo $2|cut -d, -f1)" \
+                -inst2="$(echo $2|cut -d, -f2)"; shift;;
+        -p|--replaceop)
+            run -oprepl \
                 -inst1="$(echo $2|cut -d, -f1)" \
                 -inst2="$(echo $2|cut -d, -f2)"; shift;;
         -i|--insert)
