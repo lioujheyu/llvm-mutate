@@ -166,17 +166,21 @@ namespace {
     bool runOnModule(Module &M){
       Instruction *temp;
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
-      Function* F;
-      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
-        F = cast<CallInst>(SI)->getCalledFunction();
-      }
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
-      if (SI == NULL or DI == NULL or F == NULL) {
+      if (SI == NULL or DI == NULL) {
         errs()<<"insertion failed. Cannot find ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
+      Function* F = SI->getFunction();
+      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
+        F = cast<CallInst>(SI)->getCalledFunction();
+        if (F == NULL) {
+          errs()<<"insertion failed. " << Inst2 << " is a indirect invocation\n";
+          return EXIT_FAILURE;
+        }
+      }
 
       temp = SI->clone();
       if (!temp->getType()->isVoidTy())
@@ -209,16 +213,20 @@ namespace {
       Instruction *temp;
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
-      Function* F;
-      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
-        F = cast<CallInst>(SI)->getCalledFunction();
-      }
-      if (SI == NULL or DI == NULL or F == NULL) {
+      if (SI == NULL or DI == NULL) {
         errs()<<"replace failed. Cannot find ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
+      Function* F = SI->getFunction();
+      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
+        F = cast<CallInst>(SI)->getCalledFunction();
+        if (F == NULL) {
+          errs()<<"insertion failed. " << Inst2 << " is a indirect invocation\n";
+          return EXIT_FAILURE;
+        }
+      }
       if (DI->getType() != SI->getType()) {
         errs()<<"replace failed. could find no use for the result.\n";
         return EXIT_FAILURE;
@@ -250,16 +258,21 @@ namespace {
       Instruction *temp;
       Instruction *SI = walkExact(Inst2, Inst2ID, M);
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
-      Function* F;
-      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
-        F = cast<CallInst>(SI)->getCalledFunction();
-      }
-      if (SI == NULL or DI == NULL or F == NULL) {
+
+      if (SI == NULL or DI == NULL) {
         errs()<<"Move failed. Cannot find ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
+      Function* F = SI->getFunction();
+      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
+        F = cast<CallInst>(SI)->getCalledFunction();
+        if (F == NULL) {
+          errs()<<"insertion failed. " << Inst2 << " is a indirect invocation\n";
+          return EXIT_FAILURE;
+        }
+      }
 
       temp = SI->clone();
       if (!temp->getType()->isVoidTy())
@@ -296,19 +309,26 @@ namespace {
       Instruction *temp1, *temp2;
       Instruction *I1 = walkExact(Inst1, Inst1ID, M);
       Instruction *I2 = walkExact(Inst2, Inst2ID, M);
-      Function *F1, *F2;
-      if (isa<CallInst>(I1)) { // TODO: copy indirect invocation
-        F1 = cast<CallInst>(I1)->getCalledFunction();
-      }
-      if (isa<CallInst>(I2)) { // TODO: copy indirect invocation
-        F2 = cast<CallInst>(I2)->getCalledFunction();
-      }
-      if (I1 == NULL or I2 == NULL or F1 == NULL or F2 == NULL) {
+
+      if (I1 == NULL or I2 == NULL) {
         errs()<<"swap failed. Cannot find ";
         if (I1 == NULL) errs()<<Inst1 << " ";
         if (I2 == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
+      Function* F1 = I1->getFunction();
+      Function* F2 = I2->getFunction();
+      if (isa<CallInst>(I1)) // TODO: copy indirect invocation
+        F1 = cast<CallInst>(I1)->getCalledFunction();
+      if (isa<CallInst>(I2)) // TODO: copy indirect invocation
+        F2 = cast<CallInst>(I2)->getCalledFunction();
+      if (F1 == NULL or F2 == NULL) {
+        errs()<<"insertion failed. ";
+        if (F1 == NULL) errs() << Inst1 << " is a indirect invocation. ";
+        if (F2 == NULL) errs() << Inst2 << " is a indirect invocation. ";
+        errs() << "\n";
+        return EXIT_FAILURE;
+      }
 
       temp1 = I1->clone();
       if (!temp1->getType()->isVoidTy())
