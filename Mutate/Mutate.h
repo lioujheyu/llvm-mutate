@@ -33,9 +33,14 @@ Value* getConstantValue(Type* T)
     }
 }
 
-void traverseResultBeforeI(Function &F, Instruction* boundary, Value* refOP,
+void CollectValueBeforeI(Function &F, Instruction* boundary, Value* refOP,
                            std::vector<std::pair<Value*, StringRef>> &resultVec)
 {
+    unsigned Icnt = std::distance(inst_begin(F), inst_begin(F));
+    // If the size of function is too small, do not use anything from it.
+    if (Icnt < 5)
+        return;
+
     Type *T = (refOP != NULL)? refOP->getType() : NULL;
     for (Argument &A : F.args()) {
         if (T != NULL) {
@@ -45,7 +50,7 @@ void traverseResultBeforeI(Function &F, Instruction* boundary, Value* refOP,
         resultVec.push_back(std::make_pair(&A, A.getName()));
     }
     for (Instruction &I : instructions(F)) {
-        if (&I == boundary)
+        if ((&I == boundary) && (boundary == NULL))
             break;
         if (&I == refOP)
             continue;
@@ -59,22 +64,20 @@ void traverseResultBeforeI(Function &F, Instruction* boundary, Value* refOP,
     }
 }
 
-std::pair<Value*, StringRef> randResult(Module &M, Type *T)
+std::pair<Value*, StringRef> randValue(Module &M)
 {
     std::vector<std::pair<Value*, StringRef>> resultVec;
     for (Function &F : M)
-        traverseResultBeforeI(F, NULL, NULL, resultVec);
-    // has constant to participate in drawing
-    resultVec.push_back(std::make_pair(getConstantValue(T), StringRef("C")));
+        CollectValueBeforeI(F, NULL, NULL, resultVec);
 
     std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
     return resultVec[randIdx(gen)];
 }
 
-std::pair<Value*, StringRef> randResultBeforeI(Function &F, Instruction* boundary, Value* refOP)
+std::pair<Value*, StringRef> randValueBeforeI(Function &F, Instruction* boundary, Value* refOP)
 {
     std::vector<std::pair<Value*, StringRef>> resultVec;
-    traverseResultBeforeI(F, boundary, refOP, resultVec);
+    CollectValueBeforeI(F, boundary, refOP, resultVec);
     // has constant to participate in drawing
     resultVec.push_back(std::make_pair(getConstantValue(refOP->getType()), StringRef("C")));
 
@@ -182,7 +185,7 @@ Value *findInstanceOfType(Instruction *I, Type *T){
 
 // Replace the operands of Instruction I with in-scope values of the
 // same type.  If the operands are already in scope, then retain them.
-void replaceOperands(Instruction *I){
+void replaceUnfulfillOperands(Instruction *I){
   // don't touch arguments of branch instructions
   if(isa<BranchInst>(I)) return;
 
@@ -212,7 +215,9 @@ void replaceOperands(Instruction *I){
 
         if(!isInScope){
           // If we've made it this far we really do have to find a replacement
-          Value *val = findInstanceOfType(I, v->getType());
+          Value *val = randValueBeforeI(I->getFunction(), I, v);
+
+        //   Value *val = findInstanceOfType(I, v->getType());
           if(val != 0){
             errs() << "replacing argument: " << v->getName() << "\n";
             I->setOperand(counter, val); } } } } }
@@ -345,7 +350,7 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
 /**
  * This function return the instruction that fits inst_desc exactly.
  **/
-Value* walkExact(std::string inst_desc, std::string &UID, Module &M)
+Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
 {
     unsigned count = 0;
     for(Function &F: M) {
@@ -357,7 +362,11 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M)
                 }
             }
         }
-        else {
+        else if (inst_desc[0] == 'C') {// Constant. Need to create one
+            UID = inst_desc;
+            return getConstantValue(refT);
+        }
+        else { // For instruction
             for (Instruction &I : instructions(F)) {
                 if (I.getName().find("nop") != StringRef::npos)
                     continue;

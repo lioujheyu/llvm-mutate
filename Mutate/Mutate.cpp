@@ -194,7 +194,7 @@ namespace {
       Inst2ID = cast<MDString>(N->getOperand(0))->getString();
 
       temp->insertBefore(&*DI); // insert temp before DI
-      replaceOperands(temp); // wire incoming edges of CFG into temp
+      replaceUnfulfillOperands(temp); // wire incoming edges of CFG into temp
       // check if I generates a result which is used, if not then
       // it is probably run for side effects and we don't need to
       // wire the result of the copy of I to something later on
@@ -242,7 +242,7 @@ namespace {
       bool result_ignorable_p = SI->use_empty();
       if(!result_ignorable_p)
         useResult(temp); // wire outgoing results of temp into CFG
-      replaceOperands(temp);
+      replaceUnfulfillOperands(temp);
       updateMetadata(temp, "r");
 
       errs()<<"replaced "<< Inst1ID << "," << Inst2ID << "\n";
@@ -260,13 +260,17 @@ namespace {
       // Type* T;
       if (Inst1 == "Rand" && Inst2 != "Rand") {
         Value* sval = walkExact(Inst2, Inst2ID, M);
+        if (sval == NULL){
+          errs() << "oprepl failed. cannot find" << Inst2 << "\n";
+          return EXIT_FAILURE;
+        }
         std::pair<Instruction*, unsigned> result;
         if (Inst2[0] == 'A')
-            result = randOperandAfterI(
-              *cast<Argument>(sval)->getParent(),
-              NULL,
-              sval->getType()
-            );
+          result = randOperandAfterI(
+            *cast<Argument>(sval)->getParent(),
+            NULL, // search from the start of function
+            sval->getType()
+          );
         else
           result = randOperandAfterI(
             *cast<Instruction>(sval)->getFunction(),
@@ -293,11 +297,15 @@ namespace {
         assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
         unsigned OPidx = std::stoi(dstOP.drop_front(2));// remove "OP"
         Instruction *DI = cast<Instruction>(walkExact(dstInstBase, Inst1ID, M));
+        if (DI == NULL){
+          errs() << "oprepl failed. cannot find" << dstInstBase << "\n";
+          return EXIT_FAILURE;
+        }
         Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
         Value *Dop = DI->getOperand(OPidx);
         Function *F = DI->getParent()->getParent();
 
-        std::pair<Value*, StringRef> sval = randResultBeforeI(*F, DI, Dop);
+        std::pair<Value*, StringRef> sval = randValueBeforeI(*F, DI, Dop);
         DI->setOperand(OPidx, sval.first);
         Inst2ID = sval.second;
 
@@ -305,7 +313,34 @@ namespace {
         return EXIT_SUCCESS;
       }
       else if (Inst1 == "Rand" && Inst2 == "Rand") {
+        std::pair<Value*, StringRef> sval = randValue(M);
+        std::pair<Instruction*, unsigned> result;
+        Inst2ID = sval.second
+        if (Inst2ID[0] == 'A')
+          result = randOperandAfterI(
+            *cast<Argument>(sval)->getParent(),
+            NULL, // search from the start of function
+            sval->getType()
+          );
+        else
+          result = randOperandAfterI(
+            *cast<Instruction>(sval)->getFunction(),
+            cast<Instruction>(sval),
+            sval->getType()
+          );
+        if (result.first == NULL) {
+          errs() << "oprepl failed. cannot find an OP that has the same type as" << Inst2ID << "\n";
+          return EXIT_FAILURE;
+        }
 
+        Instruction* DI = result.first;
+        unsigned OPidx = result.second;
+        DI->setOperand(OPidx, sval);
+        MDNode* N = DI->getMetadata("uniqueID");
+        Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+        Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
+        errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
+        return EXIT_SUCCESS;
       }
       else { // both != "Rand"
         err = replaceOperands(Inst1, Inst2, M);
@@ -354,7 +389,7 @@ namespace {
       Inst2ID = cast<MDString>(N->getOperand(0))->getString();
 
       temp->insertBefore(&*DI); // insert temp before DI
-      replaceOperands(temp);
+      replaceUnfulfillOperands(temp);
       bool result_ignorable_p = SI->use_empty();
       if(!result_ignorable_p)
         useResult(temp);
@@ -417,12 +452,12 @@ namespace {
       bool result_ignorable_p1 = I1->use_empty();
       bool result_ignorable_p2 = I2->use_empty();
       ReplaceInstWithInst(I2, temp1);
-      replaceOperands(temp1);
+      replaceUnfulfillOperands(temp1);
       if(!result_ignorable_p1)
         useResult(temp1);
       updateMetadata(temp1, "s");
       ReplaceInstWithInst(I1, temp2);
-      replaceOperands(temp2);
+      replaceUnfulfillOperands(temp2);
       if(!result_ignorable_p2)
         useResult(temp2);
       updateMetadata(temp2, "s");
