@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <cstdlib>
+#include <ctime>
+#include <random>
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instructions.h"
@@ -9,6 +12,103 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
 using namespace llvm;
+
+std::random_device rd;
+std::mt19937 gen(rd());
+
+Value* getConstantValue(Type* T)
+{
+    switch(T->getTypeID()) {
+    case Type::IntegerTyID: case Type::VectorTyID:
+        return Constant::getIntegerValue(T, APInt(T->getScalarType()->getIntegerBitWidth(), 1));
+    case Type::HalfTyID:    case Type::FloatTyID:
+    case Type::DoubleTyID:
+        return ConstantFP::get(T, StringRef("1"));
+    case Type::X86_FP80TyID:  case Type::FP128TyID:
+    case Type::PPC_FP128TyID: case Type::PointerTyID:
+    case Type::StructTyID:    case Type::ArrayTyID:
+        return Constant::getNullValue(T);
+    default:
+        assert(0);
+    }
+}
+
+void traverseResultBeforeI(Function &F, Instruction* boundary, Value* refOP,
+                           std::vector<std::pair<Value*, StringRef>> &resultVec)
+{
+    Type *T = (refOP != NULL)? refOP->getType() : NULL;
+    for (Argument &A : F.args()) {
+        if (T != NULL) {
+            if (A.getType()->getTypeID() != T->getTypeID())
+                continue;
+        }
+        resultVec.push_back(std::make_pair(&A, A.getName()));
+    }
+    for (Instruction &I : instructions(F)) {
+        if (&I == boundary)
+            break;
+        if (&I == refOP)
+            continue;
+        if (I.getType()->isVoidTy())
+            continue;
+        if (T != NULL) {
+            if (I.getType() != T)
+                continue;
+        }
+        resultVec.push_back(std::make_pair(&I, I.getName()));
+    }
+}
+
+std::pair<Value*, StringRef> randResult(Module &M, Type *T)
+{
+    std::vector<std::pair<Value*, StringRef>> resultVec;
+    for (Function &F : M)
+        traverseResultBeforeI(F, NULL, NULL, resultVec);
+    // has constant to participate in drawing
+    resultVec.push_back(std::make_pair(getConstantValue(T), StringRef("C")));
+
+    std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
+    return resultVec[randIdx(gen)];
+}
+
+std::pair<Value*, StringRef> randResultBeforeI(Function &F, Instruction* boundary, Value* refOP)
+{
+    std::vector<std::pair<Value*, StringRef>> resultVec;
+    traverseResultBeforeI(F, boundary, refOP, resultVec);
+    // has constant to participate in drawing
+    resultVec.push_back(std::make_pair(getConstantValue(refOP->getType()), StringRef("C")));
+
+    std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
+    return resultVec[randIdx(gen)];
+}
+
+std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* boundary, Type* T)
+{
+    std::vector<std::pair<Instruction*, unsigned>> OPvec;
+    inst_iterator I;
+    for (I=inst_begin(F); I != inst_end(F); ++I) {
+        if ((boundary == &*I) || (boundary == NULL))
+            break;
+    }
+
+    for (I; I!=inst_end(F); ++I) {
+        // if (I->getName() == "U433")
+        //     errs() << "test";
+        for (unsigned i=0; i<I->getNumOperands(); i++) {
+            Value *op = I->getOperand(i);
+            if (T == NULL)
+                OPvec.push_back(std::make_pair(&*I, i));
+            else if (op->getType() == T)
+                OPvec.push_back(std::make_pair(&*I, i));
+        }
+    }
+
+    if (OPvec.empty())
+        std::make_pair(NULL, 0);
+
+    std::uniform_int_distribution<> randIdx(0, OPvec.size()-1);
+    return OPvec[randIdx(gen)];
+}
 
 // Use the result of instruction tI somewhere in the basic block in
 // which it is defined.  Ideally in the immediately subsequent
@@ -77,24 +177,7 @@ Value *findInstanceOfType(Instruction *I, Type *T){
   //       - nulls or zeros for number types
   //         (This is questionable. Why use zero instead of one?)
   // pulled from getNullValue
-  switch (T->getTypeID()) {
-  case Type::IntegerTyID:
-  case Type::VectorTyID:
-    return Constant::getIntegerValue(T, APInt(32, 1));
-  case Type::HalfTyID:
-  case Type::FloatTyID:
-  case Type::DoubleTyID:
-    return ConstantFP::get(T, StringRef("1"));
-  case Type::X86_FP80TyID:
-  case Type::FP128TyID:
-  case Type::PPC_FP128TyID:
-  case Type::PointerTyID:
-  case Type::StructTyID:
-  case Type::ArrayTyID:
-    return Constant::getNullValue(T);
-  default:
-    return 0;
-  }
+  return getConstantValue(T);
 }
 
 // Replace the operands of Instruction I with in-scope values of the
@@ -262,41 +345,43 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
 /**
  * This function return the instruction that fits inst_desc exactly.
  **/
-Instruction* walkExact(std::string inst_desc, std::string &UID, Module &M)
+Value* walkExact(std::string inst_desc, std::string &UID, Module &M)
 {
     unsigned count = 0;
     for(Function &F: M) {
-    for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        if (I->getName().find("nop") != StringRef::npos)
-            continue;
-        count += 1;
-        if (inst_desc[0] != 'U') { // number
-            if (count == std::stoul(inst_desc)) {
-                MDNode* N = I->getMetadata("uniqueID");
-                UID = cast<MDString>(N->getOperand(0))->getString();
-                return &*I;
+        if (inst_desc[0] == 'A') {
+            for (Argument &A : F.args()) {
+                if (A.getName() == inst_desc) {
+                    UID = inst_desc;
+                    return &A;
+                }
             }
         }
-        else { // unique ID
-            MDNode* N = I->getMetadata("uniqueID");
-            std::string ID = cast<MDString>(N->getOperand(0))->getString();
-            if ((inst_desc.compare(ID) == 0)) {
-                UID = inst_desc;
-                return &*I;
+        else {
+            for (Instruction &I : instructions(F)) {
+                if (I.getName().find("nop") != StringRef::npos)
+                    continue;
+                count += 1;
+                if (inst_desc[0] == 'U') { // unique ID
+                    MDNode* N = I.getMetadata("uniqueID");
+                    std::string ID = cast<MDString>(N->getOperand(0))->getString();
+                    if ((inst_desc.compare(ID) == 0)) {
+                        UID = inst_desc;
+                        return &I;
+                    }
+                }
+                else { // number
+                    if (count == std::stoul(inst_desc)) {
+                        MDNode* N = I.getMetadata("uniqueID");
+                        UID = cast<MDString>(N->getOperand(0))->getString();
+                        return &I;
+                    }
+                }
             }
         }
-    }
     }
     return NULL;
 }
-
-// int replaceOperands(Value* DV, Value* SV)
-// {
-//     if (DV->getType()->getTypeID() != SV->getType()->getTypeID())
-//         return -1;
-
-//     DV->get
-// }
 
 int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
 {
@@ -306,7 +391,7 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
     StringRef dstOP = (StringRef(dst_desc)).rsplit('.').second;
     assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
     unsigned OPindex = std::stoi(dstOP.drop_front(2));// remove "OP"
-    Instruction *DI = walkExact(dstInstBase, dummy, M);
+    Instruction *DI = cast<Instruction>(walkExact(dstInstBase, dummy, M));
     if (DI == NULL)
         return -1;
     if (OPindex >= DI->getNumOperands())
@@ -314,33 +399,17 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
     Value *DV = DI->getOperand(OPindex);
 
     Value *SV;
-    if (src_desc[0] == 'U') {
+    if (src_desc[0] == 'U' || src_desc[0] == 'A') {
         SV = cast<Value>(walkExact(src_desc, dummy, M));
         if (SV->getType()->isVoidTy())
             return -3;
-        if (DV->getType()->getTypeID() != SV->getType()->getTypeID())
+        if (DV->getType() != SV->getType())
             return -4;
         if (DV == SV)
             return -5;
     }
-    else { // Constant value
-        switch(DV->getType()->getTypeID()) {
-        case Type::IntegerTyID: case Type::VectorTyID:
-            SV = Constant::getIntegerValue(DV->getType(), APInt(32, 1));
-            break;
-        case Type::HalfTyID:    case Type::FloatTyID:
-        case Type::DoubleTyID:
-            SV =  ConstantFP::get(DV->getType(), StringRef("1"));
-            break;
-        case Type::X86_FP80TyID:  case Type::FP128TyID:
-        case Type::PPC_FP128TyID: case Type::PointerTyID:
-        case Type::StructTyID:    case Type::ArrayTyID:
-            SV = Constant::getNullValue(DV->getType());
-            break;
-        default:
-            assert(0);
-        }
-    }
+    else // Constant value
+        SV = getConstantValue(DV->getType());
 
     DI->setOperand(OPindex, SV);
     errs()<<"opreplaced "<< dst_desc << "," << src_desc << "\n";

@@ -73,9 +73,10 @@ namespace {
     Name() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      count = 0;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkFunction(&*I);
+      Icount = 0;
+      Acount = 0;;
+      for (Function &F : M)
+        walkFunction(&F);
       return false;
     }
 
@@ -84,12 +85,18 @@ namespace {
       AU.setPreservesAll(); }
 
   private:
-    int unsigned count;
+    unsigned Icount, Acount;
 
     void walkFunction(Function *F){
+      for (Argument &A : F->args()) {
+        Acount++;
+        std::string AID = "A" + std::to_string(Acount);
+        A.setName(AID);
+      }
+
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        count += 1;
-        std::string uniqueID = "U" + std::to_string(count);
+        Icount += 1;
+        std::string uniqueID = "U" + std::to_string(Icount);
         LLVMContext& C = I->getContext();
         MDNode* N = MDNode::get(C, MDString::get(C, uniqueID));
         I->setMetadata("uniqueID", N);
@@ -142,7 +149,7 @@ namespace {
     Cut() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      Instruction *I = walkExact(Inst1, Inst1ID, M);
+      Instruction *I = cast<Instruction>(walkExact(Inst1, Inst1ID, M));
       if (I == NULL) {
         errs() << "cut failed. Cannot find " << Inst1 << "\n";
         return EXIT_FAILURE; }
@@ -249,21 +256,73 @@ namespace {
     OPRepl() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      int err = replaceOperands(Inst1, Inst2, M);
-      if (err == 0)
-        return EXIT_SUCCESS;
+      int err = 0;
+      // Type* T;
+      if (Inst1 == "Rand" && Inst2 != "Rand") {
+        Value* sval = walkExact(Inst2, Inst2ID, M);
+        std::pair<Instruction*, unsigned> result;
+        if (Inst2[0] == 'A')
+            result = randOperandAfterI(
+              *cast<Argument>(sval)->getParent(),
+              NULL,
+              sval->getType()
+            );
+        else
+          result = randOperandAfterI(
+            *cast<Instruction>(sval)->getFunction(),
+            cast<Instruction>(sval),
+            sval->getType()
+          );
+        if (result.first == NULL) {
+          errs() << "oprepl failed. cannot find an OP that has the same type as" << Inst2 << "\n";
+          return EXIT_FAILURE;
+        }
 
-      if (err == -1)
-        errs() << "oprepl failed. cannot find" << Inst1 << "\n";
-      else if (err == -2)
-        errs() << "oprepl failed. out of operand index range" << "\n";
-      else if (err == -3)
-        errs() << "oprepl failed. source instruction does not have an output" << "\n";
-      else if (err == -4)
-        errs() << "oprepl failed. type mismatched" << "\n";
-      else if (err == -5)
-        errs() << "oprepl failed. Source and Destination are the same" << "\n";
-      return EXIT_FAILURE;
+        Instruction* DI = result.first;
+        unsigned OPidx = result.second;
+        DI->setOperand(OPidx, sval);
+        MDNode* N = DI->getMetadata("uniqueID");
+        Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+        Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
+        errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
+        return EXIT_SUCCESS;
+      }
+      else if (Inst1 != "Rand" && Inst2 == "Rand") {
+        StringRef dstInstBase = (StringRef(Inst1)).rsplit('.').first;
+        StringRef dstOP = (StringRef(Inst1)).rsplit('.').second;
+        assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
+        unsigned OPidx = std::stoi(dstOP.drop_front(2));// remove "OP"
+        Instruction *DI = cast<Instruction>(walkExact(dstInstBase, Inst1ID, M));
+        Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
+        Value *Dop = DI->getOperand(OPidx);
+        Function *F = DI->getParent()->getParent();
+
+        std::pair<Value*, StringRef> sval = randResultBeforeI(*F, DI, Dop);
+        DI->setOperand(OPidx, sval.first);
+        Inst2ID = sval.second;
+
+        errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
+        return EXIT_SUCCESS;
+      }
+      else if (Inst1 == "Rand" && Inst2 == "Rand") {
+
+      }
+      else { // both != "Rand"
+        err = replaceOperands(Inst1, Inst2, M);
+        if (err == 0)
+          return EXIT_SUCCESS;
+        else if (err == -1)
+          errs() << "oprepl failed. cannot find" << Inst1 << "\n";
+        else if (err == -2)
+          errs() << "oprepl failed. out of operand index range" << "\n";
+        else if (err == -3)
+          errs() << "oprepl failed. source instruction does not have an output" << "\n";
+        else if (err == -4)
+          errs() << "oprepl failed. type mismatched" << "\n";
+        else if (err == -5)
+          errs() << "oprepl failed. Source and Destination are the same" << "\n";
+        return EXIT_FAILURE;
+      }
     }
   };
 }
@@ -275,7 +334,7 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp;
-      Instruction *SI = walkExact(Inst2, Inst2ID, M);
+      Instruction *SI = cast<Instruction>(walkExact(Inst2, Inst2ID, M));
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
       Function* F;
       if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
@@ -321,8 +380,8 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp1, *temp2;
-      Instruction *I1 = walkExact(Inst1, Inst1ID, M);
-      Instruction *I2 = walkExact(Inst2, Inst2ID, M);
+      Instruction *I1 = cast<Instruction>(walkExact(Inst1, Inst1ID, M));
+      Instruction *I2 = cast<Instruction>(walkExact(Inst2, Inst2ID, M));
       Function *F1, *F2;
       if (isa<CallInst>(I1)) { // TODO: copy indirect invocation
         F1 = cast<CallInst>(I1)->getCalledFunction();
