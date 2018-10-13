@@ -80,7 +80,7 @@ std::pair<Value*, StringRef> randValueBeforeI(BasicBlock &BB, Instruction* bound
     std::vector<std::pair<Value*, StringRef>> resultVec;
     CollectValueBeforeI(BB, boundary, refOP, resultVec);
     // has constant to participate in drawing
-    resultVec.push_back(std::make_pair(getConstantValue(refOP->getType()), StringRef("C")));
+    resultVec.push_back(std::make_pair(getConstantValue(refOP->getType()), StringRef("C1")));
 
     std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
     return resultVec[randIdx(gen)];
