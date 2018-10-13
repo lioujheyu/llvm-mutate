@@ -149,7 +149,7 @@ namespace {
     Cut() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      Instruction *I = cast<Instruction>(walkExact(Inst1, Inst1ID, M));
+      Instruction *I = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL));
       if (I == NULL) {
         errs() << "cut failed. Cannot find " << Inst1 << "\n";
         return EXIT_FAILURE; }
@@ -157,9 +157,11 @@ namespace {
       insertNOP(I);
       // decouple the dependence from later instructions
       if(!I->use_empty()){
-        Value *Val = findInstanceOfType(I, I->getType());
-        if(Val != 0){
-          I->replaceAllUsesWith(Val); } }
+        std::pair<Value*, StringRef> Val =
+          randValueBeforeI(*(I->getParent()), I, cast<Value>(I));
+        if(Val.first != NULL)
+          replaceAllUsesWithReport(I, Val);
+      }
       // TODO: have a function as a recycle bin to store deleted inst
       I->eraseFromParent();
       errs() << "cut " << Inst1ID << "\n";
@@ -192,12 +194,11 @@ namespace {
       }
 
       temp = SI->clone();
-      if (!temp->getType()->isVoidTy())
-        temp->setName(SI->getName()+".insert");
       MDNode* N = SI->getMetadata("uniqueID");
       Inst2ID = cast<MDString>(N->getOperand(0))->getString();
 
       temp->insertBefore(&*DI); // insert temp before DI
+      updateMetadata(temp, "i");
       replaceUnfulfillOperands(temp); // wire incoming edges of CFG into temp
       // check if I generates a result which is used, if not then
       // it is probably run for side effects and we don't need to
@@ -205,7 +206,6 @@ namespace {
       bool result_ignorable_p = SI->use_empty();
       if(!result_ignorable_p)
         useResult(temp); // wire outgoing results of temp into CFG
-      updateMetadata(temp, "i");
 
       errs()<<"inserted " << Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS;
@@ -242,16 +242,14 @@ namespace {
       }
 
       temp = SI->clone();
-      if (!temp->getType()->isVoidTy())
-        temp->setName(SI->getName()+".replace1");
 
       insertNOP(&*DI);
       ReplaceInstWithInst(DI, temp);
+      updateMetadata(temp, "r");
       bool result_ignorable_p = SI->use_empty();
       if(!result_ignorable_p)
         useResult(temp); // wire outgoing results of temp into CFG
       replaceUnfulfillOperands(temp);
-      updateMetadata(temp, "r");
 
       errs()<<"replaced "<< Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS; }
@@ -267,9 +265,9 @@ namespace {
       int err = 0;
       // Type* T;
       if (Inst1 == "Rand" && Inst2 != "Rand") {
-        Value* sval = walkExact(Inst2, Inst2ID, M);
+        Value* sval = walkExact(Inst2, Inst2ID, M, NULL);
         if (sval == NULL){
-          errs() << "oprepl failed. cannot find" << Inst2 << "\n";
+          errs() << "oprepl failed. cannot find " << Inst2 << "\n";
           return EXIT_FAILURE;
         }
         std::pair<Instruction*, unsigned> result;
@@ -286,7 +284,7 @@ namespace {
             sval->getType()
           );
         if (result.first == NULL) {
-          errs() << "oprepl failed. cannot find an OP that has the same type as" << Inst2 << "\n";
+          errs() << "oprepl failed. cannot find an OP that has the same type as " << Inst2 << "\n";
           return EXIT_FAILURE;
         }
 
@@ -304,16 +302,16 @@ namespace {
         StringRef dstOP = (StringRef(Inst1)).rsplit('.').second;
         assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
         unsigned OPidx = std::stoi(dstOP.drop_front(2));// remove "OP"
-        Instruction *DI = cast<Instruction>(walkExact(dstInstBase, Inst1ID, M));
+        Instruction *DI = cast<Instruction>(walkExact(dstInstBase, Inst1ID, M, NULL));
         if (DI == NULL){
           errs() << "oprepl failed. cannot find" << dstInstBase << "\n";
           return EXIT_FAILURE;
         }
         Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
         Value *Dop = DI->getOperand(OPidx);
-        Function *F = DI->getParent()->getParent();
+        BasicBlock *BB = DI->getParent();
 
-        std::pair<Value*, StringRef> sval = randValueBeforeI(*F, DI, Dop);
+        std::pair<Value*, StringRef> sval = randValueBeforeI(*BB, DI, Dop);
         DI->setOperand(OPidx, sval.first);
         Inst2ID = sval.second;
 
@@ -321,9 +319,10 @@ namespace {
         return EXIT_SUCCESS;
       }
       else if (Inst1 == "Rand" && Inst2 == "Rand") {
-        std::pair<Value*, StringRef> sval = randValue(M);
+        std::pair<Value*, StringRef> val = randValue(M);
+        Value *sval = val.first;
+        Inst2ID = val.second;
         std::pair<Instruction*, unsigned> result;
-        Inst2ID = sval.second
         if (Inst2ID[0] == 'A')
           result = randOperandAfterI(
             *cast<Argument>(sval)->getParent(),
@@ -337,7 +336,7 @@ namespace {
             sval->getType()
           );
         if (result.first == NULL) {
-          errs() << "oprepl failed. cannot find an OP that has the same type as" << Inst2ID << "\n";
+          errs() << "oprepl failed. cannot find an OP that has the same type as " << Inst2ID << "\n";
           return EXIT_FAILURE;
         }
 
@@ -377,7 +376,7 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp;
-      Instruction *SI = cast<Instruction>(walkExact(Inst2, Inst2ID, M));
+      Instruction *SI = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL));
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
 
       if (SI == NULL or DI == NULL) {
@@ -396,12 +395,11 @@ namespace {
       }
 
       temp = SI->clone();
-      if (!temp->getType()->isVoidTy())
-        temp->setName(SI->getName()+".move");
       MDNode* N = SI->getMetadata("uniqueID");
       Inst2ID = cast<MDString>(N->getOperand(0))->getString();
 
       temp->insertBefore(&*DI); // insert temp before DI
+      updateMetadata(temp, "m");
       replaceUnfulfillOperands(temp);
       bool result_ignorable_p = SI->use_empty();
       if(!result_ignorable_p)
@@ -409,12 +407,13 @@ namespace {
       // Delete the source instruction if it is there
       insertNOP(SI);
       if(!SI->use_empty()){
-        Value *Val = findInstanceOfType(SI, SI->getType());
-        if(Val != 0){
-          SI->replaceAllUsesWith(Val); } }
+        std::pair<Value*, StringRef> Val =
+          randValueBeforeI(*(SI->getParent()), SI, cast<Value>(SI));
+        if(Val.first != NULL)
+          replaceAllUsesWithReport(SI, Val);
+      }
       // TODO: have a function as a recycle bin to store deleted inst
       SI->eraseFromParent();
-      updateMetadata(temp, "m");
 
       errs()<<"moved " << Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS; }
@@ -428,8 +427,8 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp1, *temp2;
-      Instruction *I1 = cast<Instruction>(walkExact(Inst1, Inst1ID, M));
-      Instruction *I2 = cast<Instruction>(walkExact(Inst2, Inst2ID, M));
+      Instruction *I1 = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL));
+      Instruction *I2 = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL));
       if (I1 == NULL or I2 == NULL) {
         errs()<<"swap failed. Cannot find ";
         if (I1 == NULL) errs()<<Inst1 << " ";
@@ -451,11 +450,7 @@ namespace {
       }
 
       temp1 = I1->clone();
-      if (!temp1->getType()->isVoidTy())
-        temp1->setName(I1->getName()+".swap1");
       temp2 = I2->clone();
-      if (!temp2->getType()->isVoidTy())
-        temp2->setName(I2->getName()+".swap2");
 
       // confirm that the types match
       if(temp1->getType() != temp2->getType()) {
@@ -471,15 +466,15 @@ namespace {
       bool result_ignorable_p1 = I1->use_empty();
       bool result_ignorable_p2 = I2->use_empty();
       ReplaceInstWithInst(I2, temp1);
+      updateMetadata(temp1, "s");
       replaceUnfulfillOperands(temp1);
       if(!result_ignorable_p1)
         useResult(temp1);
-      updateMetadata(temp1, "s");
       ReplaceInstWithInst(I1, temp2);
+      updateMetadata(temp2, "s");
       replaceUnfulfillOperands(temp2);
       if(!result_ignorable_p2)
         useResult(temp2);
-      updateMetadata(temp2, "s");
 
       errs()<<"swapped " << Inst1ID << "," << Inst2ID << "\n";
 

@@ -33,24 +33,19 @@ Value* getConstantValue(Type* T)
     }
 }
 
-void CollectValueBeforeI(Function &F, Instruction* boundary, Value* refOP,
+void CollectValueBeforeI(BasicBlock &BB, Instruction* boundary, Value* refOP,
                            std::vector<std::pair<Value*, StringRef>> &resultVec)
 {
-    unsigned Icnt = std::distance(inst_begin(F), inst_begin(F));
-    // If the size of function is too small, do not use anything from it.
-    if (Icnt < 5)
-        return;
-
     Type *T = (refOP != NULL)? refOP->getType() : NULL;
-    for (Argument &A : F.args()) {
+    for (Argument &A : BB.getParent()->args()) {
         if (T != NULL) {
-            if (A.getType()->getTypeID() != T->getTypeID())
+            if (A.getType() != T)
                 continue;
         }
         resultVec.push_back(std::make_pair(&A, A.getName()));
     }
-    for (Instruction &I : instructions(F)) {
-        if ((&I == boundary) && (boundary == NULL))
+    for (Instruction &I : BB) {
+        if (&I == boundary)
             break;
         if (&I == refOP)
             continue;
@@ -59,6 +54,11 @@ void CollectValueBeforeI(Function &F, Instruction* boundary, Value* refOP,
         if (T != NULL) {
             if (I.getType() != T)
                 continue;
+            if (T->isPointerTy()) {
+                if (I.getType()->getPointerElementType() !=
+                    T->getPointerElementType())
+                    continue;
+            }
         }
         resultVec.push_back(std::make_pair(&I, I.getName()));
     }
@@ -68,16 +68,17 @@ std::pair<Value*, StringRef> randValue(Module &M)
 {
     std::vector<std::pair<Value*, StringRef>> resultVec;
     for (Function &F : M)
-        CollectValueBeforeI(F, NULL, NULL, resultVec);
+        for (BasicBlock &BB : F)
+            CollectValueBeforeI(BB, NULL, NULL, resultVec);
 
     std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
     return resultVec[randIdx(gen)];
 }
 
-std::pair<Value*, StringRef> randValueBeforeI(Function &F, Instruction* boundary, Value* refOP)
+std::pair<Value*, StringRef> randValueBeforeI(BasicBlock &BB, Instruction* boundary, Value* refOP)
 {
     std::vector<std::pair<Value*, StringRef>> resultVec;
-    CollectValueBeforeI(F, boundary, refOP, resultVec);
+    CollectValueBeforeI(BB, boundary, refOP, resultVec);
     // has constant to participate in drawing
     resultVec.push_back(std::make_pair(getConstantValue(refOP->getType()), StringRef("C")));
 
@@ -88,26 +89,39 @@ std::pair<Value*, StringRef> randValueBeforeI(Function &F, Instruction* boundary
 std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* boundary, Type* T)
 {
     std::vector<std::pair<Instruction*, unsigned>> OPvec;
-    inst_iterator I;
-    for (I=inst_begin(F); I != inst_end(F); ++I) {
-        if ((boundary == &*I) || (boundary == NULL))
-            break;
+    if (boundary == NULL) { // Get the all from the function
+        for (Instruction &I : instructions(F)) {
+            for (unsigned i=0; i<I.getNumOperands(); i++) {
+                Value *op = I.getOperand(i);
+                if (T == NULL)
+                    OPvec.push_back(std::make_pair(&I, i));
+                else if (op->getType() == T)
+                    OPvec.push_back(std::make_pair(&I, i));
+            }
+        }
     }
-
-    for (I; I!=inst_end(F); ++I) {
-        // if (I->getName() == "U433")
-        //     errs() << "test";
-        for (unsigned i=0; i<I->getNumOperands(); i++) {
-            Value *op = I->getOperand(i);
-            if (T == NULL)
-                OPvec.push_back(std::make_pair(&*I, i));
-            else if (op->getType() == T)
-                OPvec.push_back(std::make_pair(&*I, i));
+    else{ // has a boundary. Limit the search space to the basic block
+        BasicBlock *BB = boundary->getParent();
+        BasicBlock::iterator I;
+        for (I=BB->begin(); I!=BB->end(); ++I) {
+            if (boundary == &*I)
+                break;
+        }
+        I++;
+        for (I; I!=BB->end(); ++I) {
+            for (unsigned i=0; i<I->getNumOperands(); i++) {
+                Value *op = I->getOperand(i);
+                if (T == NULL)
+                    OPvec.push_back(std::make_pair(&*I, i));
+                else if (op->getType() == T)
+                    OPvec.push_back(std::make_pair(&*I, i));
+            }
         }
     }
 
+    Instruction* dummy = NULL;
     if (OPvec.empty())
-        std::make_pair(NULL, 0);
+        return std::make_pair(dummy, 0);
 
     std::uniform_int_distribution<> randIdx(0, OPvec.size()-1);
     return OPvec[randIdx(gen)];
@@ -119,19 +133,24 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
 void useResult(Instruction *tI){
   // we don't care if already used, use it again!
   // if(!I->use_empty()){ errs()<<"already used!\n" };
-    Function *F = tI->getParent()->getParent();
-    inst_iterator I;
-    for (I=inst_begin(F); I != inst_end(F); ++I) {
+    BasicBlock *BB = tI->getParent();
+    BasicBlock::iterator I;
+    for (I=BB->begin(); I!=BB->end(); ++I) {
         if (tI == &*I)
             break;
     }
-    for (I; I != inst_end(F); ++I) {
+    I++;
+    for (I; I!=BB->end(); ++I) {
         int counter = -1;
         for (User::op_iterator Iop = I->op_begin(), e = I->op_end(); Iop != e; ++Iop){
             counter++;
             Value *v = *Iop;
             if (v->getType() == tI->getType()){
                 I->setOperand(counter, tI);
+                // MDNode* N = I->getMetadata("uniqueID");
+                // std::string ID = cast<MDString>(N->getOperand(0))->getString();
+                // ID = ID + ".OP" + std::to_string(counter);
+                // errs()<<"opreplaced "<< ID << "," << tI->getName() << "\n";
                 return;
             }
         }
@@ -215,11 +234,15 @@ void replaceUnfulfillOperands(Instruction *I){
 
         if(!isInScope){
           // If we've made it this far we really do have to find a replacement
-          Value *val = randValueBeforeI(I->getFunction(), I, v);
+          std::pair<Value*, StringRef> ret = randValueBeforeI(*(I->getParent()), I, v);
+          Value *val = ret.first;
 
         //   Value *val = findInstanceOfType(I, v->getType());
           if(val != 0){
-            errs() << "replacing argument: " << v->getName() << "\n";
+            MDNode* N = I->getMetadata("uniqueID");
+            std::string ID = cast<MDString>(N->getOperand(0))->getString();
+            ID = ID + ".OP" + std::to_string(counter);
+            errs()<<"opreplaced "<< ID << "," << ret.second << "\n";
             I->setOperand(counter, val); } } } } }
 }
 
@@ -246,6 +269,8 @@ void updateMetadata(Instruction *I_in, std::string mode)
     }
   }
   targetMD += std::to_string(cnt+1);
+  if (!I_in->getType()->isVoidTy())
+    I_in->setName(targetMD);
   LLVMContext& C = I_in->getContext();
   N = MDNode::get(C, MDString::get(C, targetMD));
   I_in->setMetadata("uniqueID", N);
@@ -363,6 +388,8 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
             }
         }
         else if (inst_desc[0] == 'C') {// Constant. Need to create one
+            if (refT == NULL)
+                return NULL;
             UID = inst_desc;
             return getConstantValue(refT);
         }
@@ -400,7 +427,7 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
     StringRef dstOP = (StringRef(dst_desc)).rsplit('.').second;
     assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
     unsigned OPindex = std::stoi(dstOP.drop_front(2));// remove "OP"
-    Instruction *DI = cast<Instruction>(walkExact(dstInstBase, dummy, M));
+    Instruction *DI = cast<Instruction>(walkExact(dstInstBase, dummy, M, NULL));
     if (DI == NULL)
         return -1;
     if (OPindex >= DI->getNumOperands())
@@ -409,7 +436,7 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
 
     Value *SV;
     if (src_desc[0] == 'U' || src_desc[0] == 'A') {
-        SV = cast<Value>(walkExact(src_desc, dummy, M));
+        SV = cast<Value>(walkExact(src_desc, dummy, M, DV->getType()));
         if (SV->getType()->isVoidTy())
             return -3;
         if (DV->getType() != SV->getType())
@@ -423,4 +450,21 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
     DI->setOperand(OPindex, SV);
     errs()<<"opreplaced "<< dst_desc << "," << src_desc << "\n";
     return 0;
+}
+
+void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV)
+{
+    for (User *U : I->users()) {
+        Instruction *UI = cast<Instruction>(U);
+        for (int i=0; i<UI->getNumOperands(); i++) {
+            if (UI->getOperand(i) != cast<Value>(I))
+                continue;
+
+            UI->setOperand(i, metaV.first);
+            MDNode* N = UI->getMetadata("uniqueID");
+            std::string ID = cast<MDString>(N->getOperand(0))->getString();
+            ID = ID + ".OP" + std::to_string(i);
+            errs()<<"opreplaced "<< ID << "," << metaV.second << "\n";
+        }
+    }
 }
