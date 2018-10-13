@@ -173,7 +173,7 @@ Value *findInstanceOfType(Instruction *I, Type *T){
   for (BasicBlock::iterator prev = B->begin(); cast<Value>(prev) != I; ++prev){
     if((isPointer && prev->getType()->isPointerTy()) ||
        (prev->getType() == T)){
-      errs()<<"found local replacement: "<<cast<Value>(prev)<<"\n";
+    //   errs()<<"found local replacement: "<<cast<Value>(prev)<<"\n";
       return cast<Value>(prev); } }
 
   // arguments to the function
@@ -182,7 +182,7 @@ Value *findInstanceOfType(Instruction *I, Type *T){
        arg != E; ++arg){
     if((isPointer && arg->getType()->isPointerTy()) ||
        (arg->getType() == T)){
-      errs()<<"found arg replacement: "<<arg<<"\n";
+    //   errs()<<"found arg replacement: "<<arg<<"\n";
       return cast<Value>(arg); } }
 
   // global values
@@ -191,7 +191,7 @@ Value *findInstanceOfType(Instruction *I, Type *T){
        g != E; ++g){
     if((isPointer && g->getType()->isPointerTy()) ||
        (g->getType() == T)){
-      errs()<<"found global replacement: "<<cast<Value>(g)<<"\n";
+    //   errs()<<"found global replacement: "<<cast<Value>(g)<<"\n";
       return cast<Value>(g); } }
 
   // TODO: types which could be replaced with sane default
