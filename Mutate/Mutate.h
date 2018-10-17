@@ -51,6 +51,8 @@ void CollectValueBeforeI(BasicBlock &BB, Instruction* boundary, Value* refOP,
             continue;
         if (I.getType()->isVoidTy())
             continue;
+        if (I.getName().find("nop"))
+            continue;
         if (T != NULL) {
             if (I.getType() != T)
                 continue;
@@ -91,6 +93,8 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
     std::vector<std::pair<Instruction*, unsigned>> OPvec;
     if (boundary == NULL) { // Get the all from the function
         for (Instruction &I : instructions(F)) {
+            if (I.getName().find("nop"))
+                continue;
             for (unsigned i=0; i<I.getNumOperands(); i++) {
                 Value *op = I.getOperand(i);
                 if (T == NULL)
@@ -109,6 +113,8 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
         }
         I++;
         for (I; I!=BB->end(); ++I) {
+            if (I->getName().find("nop"))
+                continue;
             for (unsigned i=0; i<I->getNumOperands(); i++) {
                 Value *op = I->getOperand(i);
                 if (T == NULL)
