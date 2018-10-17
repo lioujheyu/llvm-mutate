@@ -51,7 +51,7 @@ void CollectValueBeforeI(BasicBlock &BB, Instruction* boundary, Value* refOP,
             continue;
         if (I.getType()->isVoidTy())
             continue;
-        if (I.getName().find("nop"))
+        if (I.getName().find("nop") != StringRef::npos)
             continue;
         if (T != NULL) {
             if (I.getType() != T)
@@ -113,7 +113,7 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
         }
         I++;
         for (I; I!=BB->end(); ++I) {
-            if (I->getName().find("nop"))
+            if (I.getName().find("nop") != StringRef::npos)
                 continue;
             for (unsigned i=0; i<I->getNumOperands(); i++) {
                 Value *op = I->getOperand(i);
@@ -462,7 +462,7 @@ void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV
 {
 /* Cannot use any iterator based loop since it is changing during the replacing.
    Refer to the code in LLVM:Value::doRAUW. However, since Value::useList is
-   a private variable, we need to build the useList by ourown first
+   a private variable, we need to build the useList by our own first
 */
     std::vector<Use*> useList;
     for(Use &U : I->uses())
