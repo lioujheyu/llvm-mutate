@@ -320,6 +320,14 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if (I->getName().find("nop") != StringRef::npos)
             continue;
+        if (isa<CallInst>(I)) { // avoid touching debuging call
+            Function *F = I->getFunction();
+            if (F != NULL) {
+                if (F->getName().find("llvm.dbg") != StringRef::npos)
+                    continue
+            }
+        }
+
         count += 1;
         if (inst_desc[0] != 'U') { // number
             if (count == std::stoul(inst_desc)) {
@@ -356,6 +364,14 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if (I->getName().find("nop") != StringRef::npos)
             continue;
+        if (isa<CallInst>(I)) { // avoid touching debuging call
+            Function *F = I->getFunction();
+            if (F != NULL) {
+                if (F->getName().find("llvm.dbg") != StringRef::npos)
+                    continue
+            }
+        }
+
         count += 1;
         if (inst_desc[0] != 'U') { // number
             if (count == std::stoul(inst_desc)) {
@@ -403,6 +419,14 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
             for (Instruction &I : instructions(F)) {
                 if (I.getName().find("nop") != StringRef::npos)
                     continue;
+                if (isa<CallInst>(I)) { // avoid touching debuging call
+                    Function *F = I->getFunction();
+                    if (F != NULL) {
+                        if (F->getName().find("llvm.dbg") != StringRef::npos)
+                            continue
+                    }
+                }
+
                 count += 1;
                 if (inst_desc[0] == 'U') { // unique ID
                     MDNode* N = I.getMetadata("uniqueID");
