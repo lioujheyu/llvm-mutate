@@ -320,11 +320,11 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if (I->getName().find("nop") != StringRef::npos)
             continue;
-        if (isa<CallInst>(I)) { // avoid touching debuging call
-            Function *F = I->getFunction();
+        if (isa<CallInst>(&*I)) { // avoid touching debuging call
+            Function *F = cast<CallInst>(&*I)->getCalledFunction();
             if (F != NULL) {
                 if (F->getName().find("llvm.dbg") != StringRef::npos)
-                    continue
+                    continue;
             }
         }
 
@@ -364,11 +364,11 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if (I->getName().find("nop") != StringRef::npos)
             continue;
-        if (isa<CallInst>(I)) { // avoid touching debuging call
-            Function *F = I->getFunction();
+        if (isa<CallInst>(&*I)) { // avoid touching debuging call
+            Function *F = cast<CallInst>(&*I)->getCalledFunction();
             if (F != NULL) {
                 if (F->getName().find("llvm.dbg") != StringRef::npos)
-                    continue
+                    continue;
             }
         }
 
@@ -420,10 +420,10 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
                 if (I.getName().find("nop") != StringRef::npos)
                     continue;
                 if (isa<CallInst>(I)) { // avoid touching debuging call
-                    Function *F = I->getFunction();
+                    Function *F = cast<CallInst>(I).getCalledFunction();
                     if (F != NULL) {
                         if (F->getName().find("llvm.dbg") != StringRef::npos)
-                            continue
+                            continue;
                     }
                 }
 
