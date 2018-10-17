@@ -460,17 +460,23 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
 
 void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV)
 {
-    for (User *U : I->users()) {
-        Instruction *UI = cast<Instruction>(U);
-        for (int i=0; i<UI->getNumOperands(); i++) {
-            if (UI->getOperand(i) != cast<Value>(I))
-                continue;
+/* Cannot use any iterator based loop since it is changing during the replacing.
+   Refer to the code in LLVM:Value::doRAUW. However, since Value::useList is
+   a private variable, we need to build the useList by ourown first
+*/
+    std::vector<Use*> useList;
+    for(Use &U : I->uses())
+        useList.push_back(&U);
 
-            UI->setOperand(i, metaV.first);
-            MDNode* N = UI->getMetadata("uniqueID");
-            std::string ID = cast<MDString>(N->getOperand(0))->getString();
-            ID = ID + ".OP" + std::to_string(i);
-            errs()<<"opreplaced "<< ID << "," << metaV.second << "\n";
-        }
+    while(!useList.empty()) {
+        Use *U = useList.back();
+        Instruction *UI = cast<Instruction>(U->getUser());
+
+        MDNode* N = UI->getMetadata("uniqueID");
+        std::string ID = cast<MDString>(N->getOperand(0))->getString();
+        ID = ID + ".OP" + std::to_string(U->getOperandNo());
+        errs()<<"opreplaced "<< ID << "," << metaV.second << "\n";
+        U->set(metaV.first);
+        useList.pop_back();
     }
 }
