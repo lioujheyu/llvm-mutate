@@ -113,7 +113,7 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
         }
         I++;
         for (I; I!=BB->end(); ++I) {
-            if (I.getName().find("nop") != StringRef::npos)
+            if (I->getName().find("nop") != StringRef::npos)
                 continue;
             for (unsigned i=0; i<I->getNumOperands(); i++) {
                 Value *op = I->getOperand(i);
