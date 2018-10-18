@@ -305,6 +305,28 @@ Instruction* insertNOP(Instruction *I) {
   return nop;
 }
 
+//TODO: for each kind of instructions, find a way to play with it.
+bool isValidTarget(Instruction *I)
+{
+    // avoid implicit nop instruction (%nop = add ...)
+    if (I->getName().find("nop") != StringRef::npos)
+        return false;
+    // avoid touching debuging call
+    if (isa<CallInst>(I)) {
+        Function *F = cast<CallInst>(I)->getCalledFunction();
+        if (F != NULL) {
+            if (F->getName().find("llvm.dbg") != StringRef::npos)
+                return false;
+        }
+    }
+    if (isa<BranchInst>(I))
+        return false;
+    if (isa<PHINode>(I))
+        return false;
+
+    return true;
+}
+
 /**
  * This function return the same type of instruction where the inst_desc demand.
  * Since the demand does not require accurate location, only target instruction,
@@ -318,15 +340,8 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
     unsigned count = 0;
     for(Function &F: M) {
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        if (I->getName().find("nop") != StringRef::npos)
+        if (isValidTarget(&*I) == false)
             continue;
-        if (isa<CallInst>(&*I)) { // avoid touching debuging call
-            Function *F = cast<CallInst>(&*I)->getCalledFunction();
-            if (F != NULL) {
-                if (F->getName().find("llvm.dbg") != StringRef::npos)
-                    continue;
-            }
-        }
 
         count += 1;
         if (inst_desc[0] != 'U') { // number
@@ -362,15 +377,8 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
     unsigned count = 0;
     for(Function &F: M) {
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        if (I->getName().find("nop") != StringRef::npos)
+        if (isValidTarget(&*I) == false)
             continue;
-        if (isa<CallInst>(&*I)) { // avoid touching debuging call
-            Function *F = cast<CallInst>(&*I)->getCalledFunction();
-            if (F != NULL) {
-                if (F->getName().find("llvm.dbg") != StringRef::npos)
-                    continue;
-            }
-        }
 
         count += 1;
         if (inst_desc[0] != 'U') { // number
@@ -417,15 +425,8 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
         }
         else { // For instruction
             for (Instruction &I : instructions(F)) {
-                if (I.getName().find("nop") != StringRef::npos)
+                if (isValidTarget(&*I) == false)
                     continue;
-                if (isa<CallInst>(I)) { // avoid touching debuging call
-                    Function *F = cast<CallInst>(I).getCalledFunction();
-                    if (F != NULL) {
-                        if (F->getName().find("llvm.dbg") != StringRef::npos)
-                            continue;
-                    }
-                }
 
                 count += 1;
                 if (inst_desc[0] == 'U') { // unique ID

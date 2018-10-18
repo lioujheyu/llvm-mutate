@@ -151,7 +151,7 @@ namespace {
     bool runOnModule(Module &M){
       Instruction *I = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL));
       if (I == NULL) {
-        errs() << "cut failed. Cannot find " << Inst1 << "\n";
+        errs() << "cut failed. Cannot find/use " << Inst1 << "\n";
         return EXIT_FAILURE; }
 
       insertNOP(I);
@@ -179,7 +179,7 @@ namespace {
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
       if (SI == NULL or DI == NULL) {
-        errs()<<"insertion failed. Cannot find ";
+        errs()<<"insertion failed. Cannot find/use ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
@@ -223,7 +223,7 @@ namespace {
       Instruction *SI = walkCollect(Inst2, Inst2ID, M);
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
       if (SI == NULL or DI == NULL) {
-        errs()<<"replace failed. Cannot find ";
+        errs()<<"replace failed. Cannot find/use ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
@@ -380,7 +380,7 @@ namespace {
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
 
       if (SI == NULL or DI == NULL) {
-        errs()<<"Move failed. Cannot find ";
+        errs()<<"Move failed. Cannot find/use ";
         if (DI == NULL) errs()<<Inst1 << " ";
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
@@ -430,7 +430,7 @@ namespace {
       Instruction *I1 = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL));
       Instruction *I2 = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL));
       if (I1 == NULL or I2 == NULL) {
-        errs()<<"swap failed. Cannot find ";
+        errs()<<"swap failed. Cannot find/use ";
         if (I1 == NULL) errs()<<Inst1 << " ";
         if (I2 == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
