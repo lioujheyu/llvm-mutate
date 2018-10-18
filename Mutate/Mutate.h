@@ -323,6 +323,8 @@ bool isValidTarget(Instruction *I)
         return false;
     if (isa<PHINode>(I))
         return false;
+    if (isa<ReturnInst>(I))
+        return false;
 
     return true;
 }
