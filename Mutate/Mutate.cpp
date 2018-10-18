@@ -149,7 +149,7 @@ namespace {
     Cut() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      Instruction *I = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+      Instruction *I = dyn_cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
       if (I == NULL) {
         errs() << "cut failed. Cannot find/use " << Inst1 << "\n";
         return EXIT_FAILURE; }
@@ -287,7 +287,7 @@ namespace {
         StringRef dstOP = (StringRef(Inst1)).rsplit('.').second;
         assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
         unsigned OPidx = std::stoi(dstOP.drop_front(2));// remove "OP"
-        Instruction *DI = cast<Instruction>(walkExact(dstInstBase, Inst1ID, M, NULL, false));
+        Instruction *DI = dyn_cast<Instruction>(walkExact(dstInstBase, Inst1ID, M, NULL, false));
         if (DI == NULL){
           errs() << "oprepl failed. cannot find" << dstInstBase << "\n";
           return EXIT_FAILURE;
@@ -361,7 +361,7 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp;
-      Instruction *SI = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL, true));
+      Instruction *SI = dyn_cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL, true));
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
 
       if (SI == NULL or DI == NULL) {
@@ -404,8 +404,8 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp1, *temp2;
-      Instruction *I1 = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
-      Instruction *I2 = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL, true));
+      Instruction *I1 = dyn_cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+      Instruction *I2 = dyn_cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL, true));
       if (I1 == NULL or I2 == NULL) {
         errs()<<"swap failed. Cannot find/use ";
         if (I1 == NULL) errs()<<Inst1 << " ";
