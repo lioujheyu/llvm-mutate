@@ -461,7 +461,7 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
     StringRef dstOP = (StringRef(dst_desc)).rsplit('.').second;
     assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
     unsigned OPindex = std::stoi(dstOP.drop_front(2));// remove "OP"
-    Instruction *DI = dyn_cast<Instruction>(walkExact(dstInstBase, dummy, M, NULL, false));
+    Instruction *DI = dyn_cast_or_null<Instruction>(walkExact(dstInstBase, dummy, M, NULL, false));
     if (DI == NULL)
         return -1;
     if (OPindex >= DI->getNumOperands())
