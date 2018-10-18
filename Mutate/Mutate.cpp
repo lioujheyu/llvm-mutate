@@ -149,7 +149,7 @@ namespace {
     Cut() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      Instruction *I = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL));
+      Instruction *I = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
       if (I == NULL) {
         errs() << "cut failed. Cannot find/use " << Inst1 << "\n";
         return EXIT_FAILURE; }
@@ -184,14 +184,6 @@ namespace {
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
-      Function* F = SI->getFunction();
-      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
-        F = cast<CallInst>(SI)->getCalledFunction();
-        if (F == NULL) {
-          errs()<<"insertion failed. " << Inst2 << " is a indirect invocation\n";
-          return EXIT_FAILURE;
-        }
-      }
 
       temp = SI->clone();
       MDNode* N = SI->getMetadata("uniqueID");
@@ -228,14 +220,7 @@ namespace {
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
-      Function* F = SI->getFunction();
-      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
-        F = cast<CallInst>(SI)->getCalledFunction();
-        if (F == NULL) {
-          errs()<<"insertion failed. " << Inst2 << " is a indirect invocation\n";
-          return EXIT_FAILURE;
-        }
-      }
+
       if (DI->getType() != SI->getType()) {
         errs()<<"replace failed. could find no use for the result.\n";
         return EXIT_FAILURE;
@@ -265,7 +250,7 @@ namespace {
       int err = 0;
       // Type* T;
       if (Inst1 == "Rand" && Inst2 != "Rand") {
-        Value* sval = walkExact(Inst2, Inst2ID, M, NULL);
+        Value* sval = walkExact(Inst2, Inst2ID, M, NULL, false);
         if (sval == NULL){
           errs() << "oprepl failed. cannot find " << Inst2 << "\n";
           return EXIT_FAILURE;
@@ -302,7 +287,7 @@ namespace {
         StringRef dstOP = (StringRef(Inst1)).rsplit('.').second;
         assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
         unsigned OPidx = std::stoi(dstOP.drop_front(2));// remove "OP"
-        Instruction *DI = cast<Instruction>(walkExact(dstInstBase, Inst1ID, M, NULL));
+        Instruction *DI = cast<Instruction>(walkExact(dstInstBase, Inst1ID, M, NULL, false));
         if (DI == NULL){
           errs() << "oprepl failed. cannot find" << dstInstBase << "\n";
           return EXIT_FAILURE;
@@ -376,7 +361,7 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp;
-      Instruction *SI = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL));
+      Instruction *SI = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL, true));
       Instruction *DI = walkPosition(Inst1, Inst1ID, M);
 
       if (SI == NULL or DI == NULL) {
@@ -385,14 +370,6 @@ namespace {
         if (SI == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
-      Function* F = SI->getFunction();
-      if (isa<CallInst>(SI)) { // TODO: copy indirect invocation
-        F = cast<CallInst>(SI)->getCalledFunction();
-        if (F == NULL) {
-          errs()<<"insertion failed. " << Inst2 << " is a indirect invocation\n";
-          return EXIT_FAILURE;
-        }
-      }
 
       temp = SI->clone();
       MDNode* N = SI->getMetadata("uniqueID");
@@ -427,27 +404,14 @@ namespace {
 
     bool runOnModule(Module &M){
       Instruction *temp1, *temp2;
-      Instruction *I1 = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL));
-      Instruction *I2 = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL));
+      Instruction *I1 = cast<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+      Instruction *I2 = cast<Instruction>(walkExact(Inst2, Inst2ID, M, NULL, true));
       if (I1 == NULL or I2 == NULL) {
         errs()<<"swap failed. Cannot find/use ";
         if (I1 == NULL) errs()<<Inst1 << " ";
         if (I2 == NULL) errs()<<Inst2 << " ";
         errs() << "\n";
         return EXIT_FAILURE; }
-      Function* F1 = I1->getFunction();
-      Function* F2 = I2->getFunction();
-      if (isa<CallInst>(I1)) // TODO: copy indirect invocation
-        F1 = cast<CallInst>(I1)->getCalledFunction();
-      if (isa<CallInst>(I2)) // TODO: copy indirect invocation
-        F2 = cast<CallInst>(I2)->getCalledFunction();
-      if (F1 == NULL or F2 == NULL) {
-        errs()<<"insertion failed. ";
-        if (F1 == NULL) errs() << Inst1 << " is a indirect invocation. ";
-        if (F2 == NULL) errs() << Inst2 << " is a indirect invocation. ";
-        errs() << "\n";
-        return EXIT_FAILURE;
-      }
 
       temp1 = I1->clone();
       temp2 = I2->clone();

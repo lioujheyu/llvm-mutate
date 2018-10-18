@@ -311,13 +311,14 @@ bool isValidTarget(Instruction *I)
     // avoid implicit nop instruction (%nop = add ...)
     if (I->getName().find("nop") != StringRef::npos)
         return false;
-    // avoid touching debuging call
     if (isa<CallInst>(I)) {
         Function *F = cast<CallInst>(I)->getCalledFunction();
-        if (F != NULL) {
-            if (F->getName().find("llvm.dbg") != StringRef::npos)
-                return false;
-        }
+        // avoid indirect call
+        if (F == NULL)
+            return false;
+        //avoid touching debuging call
+        if (F->getName().find("llvm.dbg") != StringRef::npos)
+            return false;
     }
     if (isa<BranchInst>(I))
         return false;
@@ -407,7 +408,7 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
 /**
  * This function return the instruction that fits inst_desc exactly.
  **/
-Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
+Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT, bool limited)
 {
     unsigned count = 0;
     for(Function &F: M) {
@@ -427,7 +428,7 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
         }
         else { // For instruction
             for (Instruction &I : instructions(F)) {
-                if (isValidTarget(&I) == false)
+                if (isValidTarget(&I) == false && limited == true)
                     continue;
 
                 count += 1;
@@ -460,7 +461,7 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
     StringRef dstOP = (StringRef(dst_desc)).rsplit('.').second;
     assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
     unsigned OPindex = std::stoi(dstOP.drop_front(2));// remove "OP"
-    Instruction *DI = cast<Instruction>(walkExact(dstInstBase, dummy, M, NULL));
+    Instruction *DI = cast<Instruction>(walkExact(dstInstBase, dummy, M, NULL, false));
     if (DI == NULL)
         return -1;
     if (OPindex >= DI->getNumOperands())
@@ -469,7 +470,7 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
 
     Value *SV;
     if (src_desc[0] == 'U' || src_desc[0] == 'A') {
-        SV = cast<Value>(walkExact(src_desc, dummy, M, DV->getType()));
+        SV = cast<Value>(walkExact(src_desc, dummy, M, DV->getType(), false));
         if (SV->getType()->isVoidTy())
             return -3;
         if (DV->getType() != SV->getType())
