@@ -425,7 +425,7 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT)
         }
         else { // For instruction
             for (Instruction &I : instructions(F)) {
-                if (isValidTarget(&*I) == false)
+                if (isValidTarget(&I) == false)
                     continue;
 
                 count += 1;
