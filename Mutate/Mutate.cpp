@@ -256,22 +256,24 @@ namespace {
           return EXIT_FAILURE;
         }
         std::pair<Instruction*, unsigned> result;
-        if (Inst2[0] == 'A')
-          result = randOperandAfterI(
-            *cast<Argument>(sval)->getParent(),
-            NULL, // search from the start of function
-            sval->getType()
-          );
-        else
-          result = randOperandAfterI(
-            *cast<Instruction>(sval)->getFunction(),
-            cast<Instruction>(sval),
-            sval->getType()
-          );
-        if (result.first == NULL) {
-          errs() << "oprepl failed. cannot find an OP that has the same type as " << Inst2 << "\n";
-          return EXIT_FAILURE;
-        }
+        do { // avoid to pick a operand that already uses the value
+          if (Inst2[0] == 'A')
+            result = randOperandAfterI(
+              *cast<Argument>(sval)->getParent(),
+              NULL, // search from the start of function
+              sval->getType()
+            );
+          else
+            result = randOperandAfterI(
+              *cast<Instruction>(sval)->getFunction(),
+              cast<Instruction>(sval),
+              sval->getType()
+            );
+          if (result.first == NULL) {
+            errs() << "oprepl failed. cannot find an OP that has the same type as " << Inst2 << "\n";
+            return EXIT_FAILURE;
+          }
+        }while (sval == result.first->getOperand(result.second));
 
         Instruction* DI = result.first;
         unsigned OPidx = result.second;
@@ -296,7 +298,10 @@ namespace {
         Value *Dop = DI->getOperand(OPidx);
         BasicBlock *BB = DI->getParent();
 
-        std::pair<Value*, StringRef> sval = randValueBeforeI(*BB, DI, Dop);
+        std::pair<Value*, StringRef> sval;
+        do {
+          sval = randValueBeforeI(*BB, DI, Dop);
+        }while(sval.first == DI->getOperand(OPidx));
         DI->setOperand(OPidx, sval.first);
         Inst2ID = sval.second;
 
@@ -308,22 +313,24 @@ namespace {
         Value *sval = val.first;
         Inst2ID = val.second;
         std::pair<Instruction*, unsigned> result;
-        if (Inst2ID[0] == 'A')
-          result = randOperandAfterI(
-            *cast<Argument>(sval)->getParent(),
-            NULL, // search from the start of function
-            sval->getType()
-          );
-        else
-          result = randOperandAfterI(
-            *cast<Instruction>(sval)->getFunction(),
-            cast<Instruction>(sval),
-            sval->getType()
-          );
-        if (result.first == NULL) {
-          errs() << "oprepl failed. cannot find an OP that has the same type as " << Inst2ID << "\n";
-          return EXIT_FAILURE;
-        }
+        do {
+          if (Inst2ID[0] == 'A')
+            result = randOperandAfterI(
+              *cast<Argument>(sval)->getParent(),
+              NULL, // search from the start of function
+              sval->getType()
+            );
+          else
+            result = randOperandAfterI(
+              *cast<Instruction>(sval)->getFunction(),
+              cast<Instruction>(sval),
+              sval->getType()
+            );
+          if (result.first == NULL) {
+            errs() << "oprepl failed. cannot find an OP that has the same type as " << Inst2ID << "\n";
+            return EXIT_FAILURE;
+          }
+        }while (sval == result.first->getOperand(result.second));
 
         Instruction* DI = result.first;
         unsigned OPidx = result.second;
