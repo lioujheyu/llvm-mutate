@@ -139,29 +139,42 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
 void useResult(Instruction *tI){
   // we don't care if already used, use it again!
   // if(!I->use_empty()){ errs()<<"already used!\n" };
-    BasicBlock *BB = tI->getParent();
-    BasicBlock::iterator I;
-    for (I=BB->begin(); I!=BB->end(); ++I) {
-        if (tI == &*I)
-            break;
+    // BasicBlock *BB = tI->getParent();
+    // BasicBlock::iterator I;
+    // for (I=BB->begin(); I!=BB->end(); ++I) {
+    //     if (tI == &*I)
+    //         break;
+    // }
+    // I++;
+    // for (I; I!=BB->end(); ++I) {
+    //     int counter = -1;
+    //     for (User::op_iterator Iop = I->op_begin(), e = I->op_end(); Iop != e; ++Iop){
+    //         counter++;
+    //         Value *v = *Iop;
+    //         if (v->getType() == tI->getType()){
+    //             I->setOperand(counter, tI);
+    //             // MDNode* N = I->getMetadata("uniqueID");
+    //             // std::string ID = cast<MDString>(N->getOperand(0))->getString();
+    //             // ID = ID + ".OP" + std::to_string(counter);
+    //             // errs()<<"opreplaced "<< ID << "," << tI->getName() << "\n";
+    //             return;
+    //         }
+    //     }
+    // }
+    std::pair<Instruction*, unsigned> result;
+    result = randOperandAfterI(*(tI->getFunction()), tI, tI->getType());
+
+    if (result.first == NULL) {
+        errs()<<"could find no use for result\n";
+        return;
     }
-    I++;
-    for (I; I!=BB->end(); ++I) {
-        int counter = -1;
-        for (User::op_iterator Iop = I->op_begin(), e = I->op_end(); Iop != e; ++Iop){
-            counter++;
-            Value *v = *Iop;
-            if (v->getType() == tI->getType()){
-                I->setOperand(counter, tI);
-                // MDNode* N = I->getMetadata("uniqueID");
-                // std::string ID = cast<MDString>(N->getOperand(0))->getString();
-                // ID = ID + ".OP" + std::to_string(counter);
-                // errs()<<"opreplaced "<< ID << "," << tI->getName() << "\n";
-                return;
-            }
-        }
-    }
-    errs()<<"could find no use for result\n";
+    Instruction* DI = result.first;
+    unsigned OPidx = result.second;
+    DI->setOperand(OPidx, tI);
+    MDNode* N = DI->getMetadata("uniqueID");
+    std::string ID = cast<MDString>(N->getOperand(0))->getString();
+    ID = ID + ".OP" + std::to_string(OPidx);
+    errs()<<"opreplaced "<< ID << "," << tI->getName() << "\n";
 }
 
 // Find a value of Type T which can be used at Instruction I.  Search
