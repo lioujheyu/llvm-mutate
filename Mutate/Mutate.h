@@ -117,6 +117,9 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
                 continue;
             for (unsigned i=0; i<I->getNumOperands(); i++) {
                 Value *op = I->getOperand(i);
+                if (op == boundary)
+                    continue;
+
                 if (T == NULL)
                     OPvec.push_back(std::make_pair(&*I, i));
                 else if (op->getType() == T)
