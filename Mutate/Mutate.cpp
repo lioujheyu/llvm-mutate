@@ -236,12 +236,8 @@ namespace {
       insertNOP(&*DI);
       ReplaceInstWithInst(DI, temp);
       updateMetadata(temp, "r");
-      if (repair) {
+      if (repair)
         replaceUnfulfillOperands(temp);
-        bool result_ignorable_p = SI->use_empty();
-        if(!result_ignorable_p)
-          useResult(temp); // wire outgoing results of temp into CFG
-      }
 
       errs()<<"replaced "<< Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS; }
