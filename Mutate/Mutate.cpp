@@ -9,7 +9,7 @@ cl::opt<std::string> Inst1ID("inst1ID", cl::init(""), cl::desc("The Unique ID of
 cl::opt<std::string> Inst2("inst2", cl::init("0"), cl::desc("second statement to mutate"));
 cl::opt<std::string> Inst2ID("inst2ID", cl::init(""), cl::desc("The Unique ID of first statement to mutate"));
 
-cl::opt<bool> repair("repair", cl::init(1), cl::desc("Whether to perform the repair after changing the instruction"));
+cl::opt<bool> use_result("use_result", cl::init(1), cl::desc("Whether to perform the use_result after changing the instruction"));
 
 namespace {
   struct Ids : public ModulePass {
@@ -194,15 +194,13 @@ namespace {
 
       temp->insertBefore(&*DI); // insert temp before DI
       updateMetadata(temp, "i");
-      if (repair) {
-        replaceUnfulfillOperands(temp); // wire incoming edges of CFG into temp
-        // check if I generates a result which is used, if not then
-        // it is probably run for side effects and we don't need to
-        // wire the result of the copy of I to something later on
-        bool result_ignorable_p = SI->use_empty();
-        if(!result_ignorable_p)
-          useResult(temp); // wire outgoing results of temp into CFG
-      }
+      replaceUnfulfillOperands(temp); // wire incoming edges of CFG into temp
+      // check if I generates a result which is used, if not then
+      // it is probably run for side effects and we don't need to
+      // wire the result of the copy of I to something later on
+      bool result_ignorable_p = SI->use_empty();
+      if(!result_ignorable_p && use_result)
+        useResult(temp); // wire outgoing results of temp into CFG
 
       errs()<<"inserted " << Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS;
@@ -236,8 +234,7 @@ namespace {
       insertNOP(&*DI);
       ReplaceInstWithInst(DI, temp);
       updateMetadata(temp, "r");
-      if (repair)
-        replaceUnfulfillOperands(temp);
+      replaceUnfulfillOperands(temp);
 
       errs()<<"replaced "<< Inst1ID << "," << Inst2ID << "\n";
       return EXIT_SUCCESS; }
@@ -382,12 +379,10 @@ namespace {
       updateMetadata(temp, "m");
       insertNOP(SI);
 
-      if (repair) {
-        replaceUnfulfillOperands(temp);
-        bool result_ignorable_p = SI->use_empty();
-        if(!result_ignorable_p)
-          useResult(temp);
-      }
+      replaceUnfulfillOperands(temp);
+      bool result_ignorable_p = SI->use_empty();
+      if(!result_ignorable_p && use_result)
+        useResult(temp);
       // Delete the source instruction if it is there
       if(!SI->use_empty()){
         std::pair<Value*, StringRef> Val =
@@ -438,18 +433,14 @@ namespace {
       bool result_ignorable_p2 = I2->use_empty();
       ReplaceInstWithInst(I2, temp1);
       updateMetadata(temp1, "s");
-      if (repair) {
-        replaceUnfulfillOperands(temp1);
-        if(!result_ignorable_p1)
-          useResult(temp1);
-      }
+      replaceUnfulfillOperands(temp1);
+      if(!result_ignorable_p1 && use_result)
+        useResult(temp1);
       ReplaceInstWithInst(I1, temp2);
       updateMetadata(temp2, "s");
-      if (repair) {
-        replaceUnfulfillOperands(temp2);
-        if(!result_ignorable_p2)
-          useResult(temp2);
-      }
+      replaceUnfulfillOperands(temp2);
+      if(!result_ignorable_p2 && use_result)
+        useResult(temp2);
 
       errs()<<"swapped " << Inst1ID << "," << Inst2ID << "\n";
 
