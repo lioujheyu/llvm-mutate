@@ -67,7 +67,7 @@ if [ $? -eq 4 ]; then
     # GNU enhanced getopt is available
     eval set -- $(getopt \
         -o hILntT:gGc:r:p:i:m:s:lo:f: \
-        -l help,ids,cfg,call-graph,list,name,trace,ptx,trace-obj:,cut:,replace:,replaceop:,insert:,move:,swap:,link,out:,file: \
+        -l help,ids,cfg,call-graph,list,name,trace,ptx,no-repair,trace-obj:,cut:,replace:,replaceop:,insert:,move:,swap:,link,out:,file: \
         -- "$@" || echo "$HELP_TEXT" && exit 1;)
 else
     # Original getopt is available
@@ -90,6 +90,8 @@ while [ $# -gt 0 ];do
         -G|--call-graph) graph -dot-callgraph ;;
         -t|--trace) TRACE="yes"; run -trace;;
         -T|--trace-obj) TRACE_OBJ="$2"; shift;;
+        --no-repair)
+            OPT_FLAGS+=" -repair=0 --disable-verify";;
         -c|--cut)   run -cut -inst1="$2"; shift;;
         -r|--replace)
             run -replace \
