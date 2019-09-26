@@ -448,6 +448,40 @@ namespace {
   };
 }
 
+namespace {
+  struct Cache : public ModulePass {
+    static char ID; // pass identification
+    Cache() : ModulePass(ID) {}
+    bool runOnModule(Module &M){
+      Function *ldgFun = ldgGen(M);
+      Instruction *I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+      if (isa<LoadInst>(I)) {
+        std::vector<Value*>args;
+        args.push_back(I->getOperand(0));
+        args.push_back(ConstantInt::get(Type::getInt32Ty(M.getContext()), 4));
+        Instruction *ldgCall = CallInst::Create(ldgFun, args, "");
+        ldgCall->setName(I->getName());
+        ldgCall->setMetadata("uniqueID", I->getMetadata("uniqueID"));
+        ReplaceInstWithInst(I, ldgCall);
+        updateMetadata(ldgCall, "x");
+        replaceUnfulfillOperands(ldgCall);
+      }
+      // else if (isa<CallInst>(I)){
+      //   if ()
+      // }
+      else{
+        errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";
+        return EXIT_FAILURE;
+      }
+
+      errs()<<"cache " << Inst1ID << "\n";
+      return EXIT_SUCCESS;
+
+      // Instruction *newInst = CallInst::Create(ldg, arguments, "");
+    }
+  };
+}
+
 char Ids::ID = 0;
 char List::ID = 0;
 char Name::ID = 0;
@@ -457,6 +491,7 @@ char Insert::ID = 0;
 char Move::ID = 0;
 char Replace::ID = 0;
 char OPRepl::ID = 0;
+char Cache::ID = 0;
 char Swap::ID = 0;
 static RegisterPass<Ids>     S("ids",     "print the number of instructions");
 static RegisterPass<List>    T("list",    "list instruction's type and id");
@@ -467,4 +502,5 @@ static RegisterPass<Insert>  X("insert",  "insert inst2 before inst1");
 static RegisterPass<Replace> Y("replace", "replace inst1 with inst2");
 static RegisterPass<Move>    ZA("move",   "move inst2 before inst1");
 static RegisterPass<OPRepl>  ZB("oprepl", "replace operand with inst");
+static RegisterPass<Cache>   ZC("cache",  "toggle cache behavior of a load instruction");
 static RegisterPass<Swap>    Z("swap",    "swap inst1 and inst2");

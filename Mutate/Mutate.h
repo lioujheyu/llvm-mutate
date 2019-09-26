@@ -424,7 +424,7 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
 /**
  * This function return the instruction that fits inst_desc exactly.
  **/
-Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT, bool limited)
+Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT, bool validonly)
 {
     unsigned count = 0;
     for(Function &F: M) {
@@ -444,7 +444,7 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT,
         }
         else { // For instruction
             for (Instruction &I : instructions(F)) {
-                if (isValidTarget(&I) == false && limited == true)
+                if (isValidTarget(&I) == false && validonly == true)
                     continue;
 
                 count += 1;
@@ -523,4 +523,24 @@ void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV
         U->set(metaV.first);
         useList.pop_back();
     }
+}
+
+// declare i32 @llvm.nvvm.ldg.global.i.i32.p0i32(i32* nocapture, i32)
+Function *ldgGen(Module &M)
+{
+    StringRef ldgName = "llvm.nvvm.ldg.global.i.i32.p0i32";
+    Function *ldgFun = M.getFunction(ldgName);
+    if (ldgFun != NULL)
+        return ldgFun;
+
+    std::vector<Type*> ldgArgs;
+    ldgArgs.push_back(Type::getInt32PtrTy(M.getContext()));
+    ldgArgs.push_back(Type::getInt32Ty(M.getContext()));
+    FunctionType *FT =
+        FunctionType::get(Type::getInt32Ty(M.getContext()), ldgArgs, false);
+
+    ldgFun =
+        Function::Create(FT, Function::ExternalLinkage, ldgName, M);
+
+    return ldgFun;
 }

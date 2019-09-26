@@ -66,8 +66,8 @@ getopt -T > /dev/null
 if [ $? -eq 4 ]; then
     # GNU enhanced getopt is available
     eval set -- $(getopt \
-        -o hILntT:gGc:r:p:i:m:s:lo:f: \
-        -l help,ids,cfg,call-graph,list,name,trace,ptx,not_use_result,trace-obj:,cut:,replace:,replaceop:,insert:,move:,swap:,link,out:,file: \
+        -o hILntT:gGc:r:p:i:m:s:x:lo:f: \
+        -l help,ids,cfg,call-graph,list,name,trace,ptx,not_use_result,trace-obj:,cut:,replace:,replaceop:,insert:,move:,swap:,cache:,link,out:,file: \
         -- "$@" || echo "$HELP_TEXT" && exit 1;)
 else
     # Original getopt is available
@@ -113,6 +113,8 @@ while [ $# -gt 0 ];do
             run -swap \
                 -inst1="$(echo $2|cut -d, -f1)" \
                 -inst2="$(echo $2|cut -d, -f2)"; shift;;
+        -x|--cache)
+            run -cache -inst1="$2"; shift;;
         (--) shift; break;;
         (-*) echo "$HELP_TEXT" && exit 1;;
         (*)  break;;
