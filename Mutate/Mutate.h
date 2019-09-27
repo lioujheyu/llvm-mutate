@@ -15,6 +15,7 @@ using namespace llvm;
 
 std::random_device rd;
 std::mt19937 gen(rd());
+const std::string ldgPre = "llvm.nvvm.ldg.global.i";
 
 Value* getConstantValue(Type* T)
 {
@@ -134,6 +135,24 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
 
     std::uniform_int_distribution<> randIdx(0, OPvec.size()-1);
     return OPvec[randIdx(gen)];
+}
+
+std::pair<Instruction*, StringRef> randTexCachableI(Module &M)
+{
+    std::vector<std::pair<Instruction*, StringRef>> resultVec;
+    for (Function &F : M)
+    for (BasicBlock &BB : F)
+    for (Instruction &I : BB) {
+        if (isa<LoadInst>(I))
+            resultVec.push_back(std::make_pair(&I, I.getName()));
+        else if (isa<CallInst>(I)) {
+            if (cast<CallInst>(I).getCalledFunction()->getName().contains(ldgPre))
+                resultVec.push_back(std::make_pair(&I, I.getName()));
+        }
+    }
+
+    std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
+    return resultVec[randIdx(gen)];
 }
 
 // Use the result of instruction tI somewhere in the basic block in
@@ -526,7 +545,6 @@ void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV
 }
 
 // declare i32 @llvm.nvvm.ldg.global.i.i32.p0i32(i32* nocapture, i32)
-const std::string ldgPre = "llvm.nvvm.ldg.global.i";
 Function *ldgGen(Module &M, Type *inT, Type *outT)
 {
     std::string ldgName;

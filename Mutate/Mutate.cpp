@@ -454,10 +454,19 @@ namespace {
     Cache() : ModulePass(ID) {}
     bool runOnModule(Module &M){
       Function *ldgFun;
-      Instruction *I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
-      if (I == NULL) {
-        errs() << "cache failed. Cannot find/use " << Inst1 << "\n";
-        return EXIT_FAILURE; }
+      Instruction *I;
+      if (Inst1 == "rand") {
+        std::pair<Instruction*, StringRef> result = randTexCachableI(M);
+        I = result.first;
+        Inst1ID = result.second;
+      }
+      else {
+        I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+        if (I == NULL) {
+          errs() << "cache failed. Cannot find/use " << Inst1 << "\n";
+          return EXIT_FAILURE; }
+      }
+
       Instruction *newI;
       if (isa<LoadInst>(I)) {
         ldgFun = ldgGen(M, I->getOperand(0)->getType(), I->getType());
@@ -492,7 +501,6 @@ namespace {
       newI->setMetadata("tbaa", I->getMetadata("tbaa"));
       ReplaceInstWithInst(I, newI);
       updateMetadata(newI, "x");
-      replaceUnfulfillOperands(newI);
 
       errs()<<"cache " << Inst1ID << "\n";
       return EXIT_SUCCESS;
