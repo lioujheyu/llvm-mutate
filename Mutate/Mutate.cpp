@@ -453,31 +453,49 @@ namespace {
     static char ID; // pass identification
     Cache() : ModulePass(ID) {}
     bool runOnModule(Module &M){
-      Function *ldgFun = ldgGen(M);
+      Function *ldgFun;
       Instruction *I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+      if (I == NULL) {
+        errs() << "cache failed. Cannot find/use " << Inst1 << "\n";
+        return EXIT_FAILURE; }
+      Instruction *newI;
       if (isa<LoadInst>(I)) {
+        ldgFun = ldgGen(M, I->getOperand(0)->getType(), I->getType());
         std::vector<Value*>args;
         args.push_back(I->getOperand(0));
-        args.push_back(ConstantInt::get(Type::getInt32Ty(M.getContext()), 4));
-        Instruction *ldgCall = CallInst::Create(ldgFun, args, "");
-        ldgCall->setName(I->getName());
-        ldgCall->setMetadata("uniqueID", I->getMetadata("uniqueID"));
-        ReplaceInstWithInst(I, ldgCall);
-        updateMetadata(ldgCall, "x");
-        replaceUnfulfillOperands(ldgCall);
+        args.push_back(ConstantInt::get(
+          Type::getInt32Ty(M.getContext()),
+          cast<LoadInst>(I)->getAlignment()
+        ));
+        newI = CallInst::Create(ldgFun, args, I->getName());
       }
-      // else if (isa<CallInst>(I)){
-      //   if ()
-      // }
+      else if (isa<CallInst>(I)){
+        // Check if called function is ldg()
+        if (!cast<CallInst>(I)->getCalledFunction()->getName().contains(ldgPre)) {
+          errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";
+          return EXIT_FAILURE;
+        }
+        newI = new LoadInst(
+          I->getType(),     // output type
+          I->getOperand(0), // address value
+          I->getName(),     // Instruction name
+          false,            // is volatile?
+          cast<ConstantInt>(I->getOperand(1))->getValue().getSExtValue()   // align
+        );
+      }
       else{
         errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";
         return EXIT_FAILURE;
       }
 
+      newI->setMetadata("uniqueID", I->getMetadata("uniqueID"));
+      newI->setMetadata("tbaa", I->getMetadata("tbaa"));
+      ReplaceInstWithInst(I, newI);
+      updateMetadata(newI, "x");
+      replaceUnfulfillOperands(newI);
+
       errs()<<"cache " << Inst1ID << "\n";
       return EXIT_SUCCESS;
-
-      // Instruction *newInst = CallInst::Create(ldg, arguments, "");
     }
   };
 }

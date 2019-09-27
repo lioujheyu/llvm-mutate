@@ -526,18 +526,33 @@ void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV
 }
 
 // declare i32 @llvm.nvvm.ldg.global.i.i32.p0i32(i32* nocapture, i32)
-Function *ldgGen(Module &M)
+const std::string ldgPre = "llvm.nvvm.ldg.global.i";
+Function *ldgGen(Module &M, Type *inT, Type *outT)
 {
-    StringRef ldgName = "llvm.nvvm.ldg.global.i.i32.p0i32";
+    std::string ldgName;
+    if (outT == Type::getInt32Ty(M.getContext()))
+        ldgName = ldgPre + ".i32";
+    else if (outT == Type::getInt8Ty(M.getContext()))
+        ldgName = ldgPre + ".i8";
+    else
+        assert(0);
+
+    if (inT == Type::getInt32PtrTy(M.getContext()))
+        ldgName = ldgName + ".p0i32";
+    else if (inT == Type::getInt8PtrTy(M.getContext()))
+        ldgName = ldgName + ".p0i8";
+    else
+        assert(0);
+
     Function *ldgFun = M.getFunction(ldgName);
     if (ldgFun != NULL)
         return ldgFun;
 
     std::vector<Type*> ldgArgs;
-    ldgArgs.push_back(Type::getInt32PtrTy(M.getContext()));
+    ldgArgs.push_back(inT);
     ldgArgs.push_back(Type::getInt32Ty(M.getContext()));
     FunctionType *FT =
-        FunctionType::get(Type::getInt32Ty(M.getContext()), ldgArgs, false);
+        FunctionType::get(outT, ldgArgs, false);
 
     ldgFun =
         Function::Create(FT, Function::ExternalLinkage, ldgName, M);
