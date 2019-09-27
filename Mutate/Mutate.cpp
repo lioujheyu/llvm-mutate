@@ -455,7 +455,7 @@ namespace {
     bool runOnModule(Module &M){
       Function *ldgFun;
       Instruction *I;
-      if (Inst1 == "rand") {
+      if (Inst1 == "Rand") {
         std::pair<Instruction*, StringRef> result = randTexCachableI(M);
         I = result.first;
         Inst1ID = result.second;
