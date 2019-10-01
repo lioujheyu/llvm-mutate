@@ -146,6 +146,8 @@ std::pair<Instruction*, StringRef> randTexCachableI(Module &M)
         if (isa<LoadInst>(I))
             resultVec.push_back(std::make_pair(&I, I.getName()));
         else if (isa<CallInst>(I)) {
+            if (cast<CallInst>(I).getCalledFunction() == NULL)
+                continue;
             if (cast<CallInst>(I).getCalledFunction()->getName().contains(ldgPre))
                 resultVec.push_back(std::make_pair(&I, I.getName()));
         }
