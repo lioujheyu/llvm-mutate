@@ -552,8 +552,12 @@ Function *ldgGen(Module &M, Type *inT, Type *outT)
         ldgName = ldgPre + ".i.i32";
     else if (outT == Type::getInt8Ty(M.getContext()))
         ldgName = ldgPre + ".i.i8";
+    else if (outT == Type::getInt64Ty(M.getContext()))
+        ldgName = ldgPre + ".i.i64";
     else if (outT == Type::getFloatTy(M.getContext()))
         ldgName = ldgPre + ".f.f32";
+    else if (outT == Type::getDoubleTy(M.getContext()))
+        ldgName = ldgPre + ".f.f64";
     else
         assert(0);
 
@@ -561,8 +565,12 @@ Function *ldgGen(Module &M, Type *inT, Type *outT)
         ldgName = ldgName + ".p0i32";
     else if (inT == Type::getInt8PtrTy(M.getContext()))
         ldgName = ldgName + ".p0i8";
+    else if (inT == Type::getInt64PtrTy(M.getContext()))
+        ldgName = ldgName + ".p0i64";
     else if (inT == Type::getFloatPtrTy(M.getContext()))
         ldgName = ldgName + ".p0f32";
+    else if (inT == Type::getDoublePtrTy(M.getContext()))
+        ldgName = ldgName + ".p0f64";
     else
         assert(0);
 
