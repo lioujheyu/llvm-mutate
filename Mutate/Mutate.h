@@ -15,7 +15,7 @@ using namespace llvm;
 
 std::random_device rd;
 std::mt19937 gen(rd());
-const std::string ldgPre = "llvm.nvvm.ldg.global.i";
+const std::string ldgPre = "llvm.nvvm.ldg.global";
 
 Value* getConstantValue(Type* T)
 {
@@ -549,9 +549,11 @@ Function *ldgGen(Module &M, Type *inT, Type *outT)
 {
     std::string ldgName;
     if (outT == Type::getInt32Ty(M.getContext()))
-        ldgName = ldgPre + ".i32";
+        ldgName = ldgPre + ".i.i32";
     else if (outT == Type::getInt8Ty(M.getContext()))
-        ldgName = ldgPre + ".i8";
+        ldgName = ldgPre + ".i.i8";
+    else if (outT == Type::getFloatTy(M.getContext()))
+        ldgName = ldgPre + ".f.f32";
     else
         assert(0);
 
@@ -559,6 +561,8 @@ Function *ldgGen(Module &M, Type *inT, Type *outT)
         ldgName = ldgName + ".p0i32";
     else if (inT == Type::getInt8PtrTy(M.getContext()))
         ldgName = ldgName + ".p0i8";
+    else if (inT == Type::getFloatPtrTy(M.getContext()))
+        ldgName = ldgName + ".p0f32";
     else
         assert(0);
 
