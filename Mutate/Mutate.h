@@ -143,8 +143,18 @@ std::pair<Instruction*, StringRef> randTexCachableI(Module &M)
     for (Function &F : M)
     for (BasicBlock &BB : F)
     for (Instruction &I : BB) {
-        if (isa<LoadInst>(I))
+        if (isa<LoadInst>(I)) {
+            // induce the source address space and exclude shared memory address
+            // LLVM seems to have addrspacecast for shared before using it
+            // Need to monitor if there is any false assumption with this method
+            Instruction *srcI = dyn_cast_or_null<Instruction>(I.getOperand(0));
+            if (isa<AddrSpaceCastInst>(srcI)) {
+                if (srcI->getOperand(0)->getType()->getPointerAddressSpace() == 3)
+                    continue;
+            }
+
             resultVec.push_back(std::make_pair(&I, I.getName()));
+        }
         else if (isa<CallInst>(I)) {
             if (cast<CallInst>(I).getCalledFunction() == NULL)
                 continue;
