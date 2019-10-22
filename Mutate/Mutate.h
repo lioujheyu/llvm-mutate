@@ -77,8 +77,11 @@ void CollectValueBeforeI(Function *F, Instruction* boundary, Value* refOP,
 std::pair<Value*, StringRef> randValue(Module &M)
 {
     std::vector<std::pair<Value*, StringRef>> resultVec;
-    for (Function &F : M)
+    for (Function &F : M) {
+        if (F.empty())
+            continue;
         CollectValueBeforeI(&F, NULL, NULL, resultVec);
+    }
 
     std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
     return resultVec[randIdx(gen)];
