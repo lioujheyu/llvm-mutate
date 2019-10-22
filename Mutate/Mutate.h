@@ -7,6 +7,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -34,20 +35,26 @@ Value* getConstantValue(Type* T)
     }
 }
 
-void CollectValueBeforeI(BasicBlock &BB, Instruction* boundary, Value* refOP,
+void CollectValueBeforeI(Function *F, Instruction* boundary, Value* refOP,
                            std::vector<std::pair<Value*, StringRef>> &resultVec)
 {
     Type *T = (refOP != NULL)? refOP->getType() : NULL;
-    for (Argument &A : BB.getParent()->args()) {
+    for (Argument &A : F->args()) {
         if (T != NULL) {
             if (A.getType() != T)
                 continue;
         }
         resultVec.push_back(std::make_pair(&A, A.getName()));
     }
-    for (Instruction &I : BB) {
-        if (&I == boundary)
-            break;
+
+    DominatorTree DT = DominatorTree(*F);
+    for (Instruction &I : instructions(F)) {
+        if (boundary != NULL) {
+            if (&I == boundary)
+                break;
+            if (DT.dominates(&I, boundary) == false)
+                continue;
+        }
         if (&I == refOP)
             continue;
         if (I.getType()->isVoidTy())
@@ -71,17 +78,16 @@ std::pair<Value*, StringRef> randValue(Module &M)
 {
     std::vector<std::pair<Value*, StringRef>> resultVec;
     for (Function &F : M)
-        for (BasicBlock &BB : F)
-            CollectValueBeforeI(BB, NULL, NULL, resultVec);
+        CollectValueBeforeI(&F, NULL, NULL, resultVec);
 
     std::uniform_int_distribution<> randIdx(0, resultVec.size()-1);
     return resultVec[randIdx(gen)];
 }
 
-std::pair<Value*, StringRef> randValueBeforeI(BasicBlock &BB, Instruction* boundary, Value* refOP)
+std::pair<Value*, StringRef> randValueBeforeI(Function *F, Instruction* boundary, Value* refOP)
 {
     std::vector<std::pair<Value*, StringRef>> resultVec;
-    CollectValueBeforeI(BB, boundary, refOP, resultVec);
+    CollectValueBeforeI(F, boundary, refOP, resultVec);
     // has constant to participate in drawing
     resultVec.push_back(std::make_pair(getConstantValue(refOP->getType()), StringRef("C1")));
 
@@ -91,6 +97,8 @@ std::pair<Value*, StringRef> randValueBeforeI(BasicBlock &BB, Instruction* bound
 
 std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* boundary, Type* T)
 {
+    DominatorTree DT = DominatorTree(F);
+
     std::vector<std::pair<Instruction*, unsigned>> OPvec;
     if (boundary == NULL) { // Get the all from the function
         for (Instruction &I : instructions(F)) {
@@ -105,26 +113,29 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
             }
         }
     }
-    else{ // has a boundary. Limit the search space to the basic block
-        BasicBlock *BB = boundary->getParent();
-        BasicBlock::iterator I;
-        for (I=BB->begin(); I!=BB->end(); ++I) {
-            if (boundary == &*I)
-                break;
-        }
-        I++;
-        for (I; I!=BB->end(); ++I) {
-            if (I->getName().find("nop") != StringRef::npos)
+    else{ // has a boundary.
+        bool reached = false;
+        for (Instruction &I : instructions(F)) {
+            // if (boundary == &I) {
+            //     reached = true;
+            //     continue;
+            // }
+            // if (reached == false)
+            //     continue;
+            if (I.getName().find("nop") != StringRef::npos)
                 continue;
-            for (unsigned i=0; i<I->getNumOperands(); i++) {
-                Value *op = I->getOperand(i);
+            if (DT.dominates(boundary, &I) == false)
+                continue;
+
+            for (unsigned i=0; i<I.getNumOperands(); i++) {
+                Value *op = I.getOperand(i);
                 if (op == boundary)
                     continue;
 
                 if (T == NULL)
-                    OPvec.push_back(std::make_pair(&*I, i));
+                    OPvec.push_back(std::make_pair(&I, i));
                 else if (op->getType() == T)
-                    OPvec.push_back(std::make_pair(&*I, i));
+                    OPvec.push_back(std::make_pair(&I, i));
             }
         }
     }
@@ -171,30 +182,6 @@ std::pair<Instruction*, StringRef> randTexCachableI(Module &M)
 // which it is defined.  Ideally in the immediately subsequent
 // instruction.
 void useResult(Instruction *tI){
-  // we don't care if already used, use it again!
-  // if(!I->use_empty()){ errs()<<"already used!\n" };
-    // BasicBlock *BB = tI->getParent();
-    // BasicBlock::iterator I;
-    // for (I=BB->begin(); I!=BB->end(); ++I) {
-    //     if (tI == &*I)
-    //         break;
-    // }
-    // I++;
-    // for (I; I!=BB->end(); ++I) {
-    //     int counter = -1;
-    //     for (User::op_iterator Iop = I->op_begin(), e = I->op_end(); Iop != e; ++Iop){
-    //         counter++;
-    //         Value *v = *Iop;
-    //         if (v->getType() == tI->getType()){
-    //             I->setOperand(counter, tI);
-    //             // MDNode* N = I->getMetadata("uniqueID");
-    //             // std::string ID = cast<MDString>(N->getOperand(0))->getString();
-    //             // ID = ID + ".OP" + std::to_string(counter);
-    //             // errs()<<"opreplaced "<< ID << "," << tI->getName() << "\n";
-    //             return;
-    //         }
-    //     }
-    // }
     std::pair<Instruction*, unsigned> result;
     result = randOperandAfterI(*(tI->getFunction()), tI, tI->getType());
 
@@ -287,7 +274,7 @@ void replaceUnfulfillOperands(Instruction *I){
 
         if(!isInScope){
           // If we've made it this far we really do have to find a replacement
-          std::pair<Value*, StringRef> ret = randValueBeforeI(*(I->getParent()), I, v);
+          std::pair<Value*, StringRef> ret = randValueBeforeI(F, I, v);
           Value *val = ret.first;
 
         //   Value *val = findInstanceOfType(I, v->getType());

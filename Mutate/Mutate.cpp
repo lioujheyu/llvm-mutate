@@ -161,7 +161,7 @@ namespace {
       // This cannot be omitted, otherwise the llvm-dis will have segfault
       if(!I->use_empty()){
         std::pair<Value*, StringRef> Val =
-          randValueBeforeI(*(I->getParent()), I, cast<Value>(I));
+          randValueBeforeI(I->getFunction(), I, cast<Value>(I));
         if(Val.first != NULL)
           replaceAllUsesWithReport(I, Val);
       }
@@ -294,9 +294,7 @@ namespace {
         }
         Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
         Value *Dop = DI->getOperand(OPidx);
-        BasicBlock *BB = DI->getParent();
-
-        std::pair<Value*, StringRef> sval = randValueBeforeI(*BB, DI, Dop);
+        std::pair<Value*, StringRef> sval = randValueBeforeI(DI->getFunction(), DI, Dop);
         DI->setOperand(OPidx, sval.first);
         Inst2ID = sval.second;
 
@@ -386,7 +384,7 @@ namespace {
       // Delete the source instruction if it is there
       if(!SI->use_empty()){
         std::pair<Value*, StringRef> Val =
-          randValueBeforeI(*(SI->getParent()), SI, cast<Value>(SI));
+          randValueBeforeI(SI->getFunction(), SI, cast<Value>(SI));
         if(Val.first != NULL)
           replaceAllUsesWithReport(SI, Val);
       }
