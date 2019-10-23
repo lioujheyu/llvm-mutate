@@ -134,6 +134,12 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
                 Value *op = I.getOperand(i);
                 if (op == boundary)
                     continue;
+                // TODO: generate constant value for this GEP corner case
+                if(isa<GetElementPtrInst>(I)) {
+                    GetElementPtrInst *GEP = cast<GetElementPtrInst>(&I);
+                    if (GEP->getSourceElementType()->isStructTy())
+                        break;
+                }
 
                 if (T == NULL)
                     OPvec.push_back(std::make_pair(&I, i));
