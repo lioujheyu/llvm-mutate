@@ -15,10 +15,12 @@
 #                    default is llvm_mutate_trace.o
 #  -c,--cut -------- cut the given instruction
 #  -r,--replace ---- replace the first inst. with the second
+#  -p,--replaceop -- replace the first Operand. with the second
 #  -i,--insert ----- copy the second inst. before the first
 #  -m,--move ------- move the second inst. before the first
 #  -s,--swap ------- swap the given instructions
 #  -l,--link ------- link the result into an executable
+#  --not_use_result  Manipulate inst without fixing the use chain
 #  -o,--out -------- write output to specified file
 #
 HELP_TEXT=$(cat "$0" \
