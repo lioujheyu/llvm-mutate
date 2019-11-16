@@ -477,6 +477,10 @@ namespace {
         newI = CallInst::Create(ldgFun, args, I->getName());
       }
       else if (isa<CallInst>(I)){
+        if (cast<CallInst>(I)->getCalledFunction() == NULL) {
+          errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";
+          return EXIT_FAILURE;
+        }
         // Check if called function is ldg()
         if (!cast<CallInst>(I)->getCalledFunction()->getName().contains(ldgPre)) {
           errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";

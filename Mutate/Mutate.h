@@ -304,6 +304,8 @@ void replaceUnfulfillOperands(Instruction *I){
 void updateMetadata(Instruction *I_in, std::string mode)
 {
   MDNode* N = I_in->getMetadata("uniqueID");
+//   StringRef IMD = cast<MDString>(N->getOperand(0))->getString();
+//   std::string targetMD = IMD.rsplit('.').first.str() + "." + mode;
   std::string targetMD = cast<MDString>(N->getOperand(0))->getString();
   targetMD += "." + mode;
 
@@ -311,6 +313,8 @@ void updateMetadata(Instruction *I_in, std::string mode)
   Module *M = I_in->getModule();
   for(Function &F : *M) {
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+    //   if (&*I == I_in)
+    //     continue;
       MDNode* N = I->getMetadata("uniqueID");
       StringRef I_MD = cast<MDString>(N->getOperand(0))->getString();
       if (I_MD.find(targetMD) != StringRef::npos)
@@ -355,10 +359,14 @@ bool isValidTarget(Instruction *I)
     if (I->getName().find("nop") != StringRef::npos)
         return false;
     if (isa<CallInst>(I)) {
-        Function *F = cast<CallInst>(I)->getCalledFunction();
-        // avoid indirect call
-        if (F == NULL)
+        CallInst* calI = cast<CallInst>(I);
+        if (calI->isIndirectCall())
+            // avoid indirect call
             return false;
+        if (isa<InlineAsm>(calI->getCalledOperand()))
+            // Todo: find a better way to identify a inline assembly
+            return true;
+        Function *F = calI->getCalledFunction();
         //avoid touching debuging call
         if (F->getName().find("llvm.dbg") != StringRef::npos)
             return false;
