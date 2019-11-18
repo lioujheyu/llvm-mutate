@@ -8,6 +8,7 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -604,4 +605,42 @@ Function *ldgGen(Module &M, Type *inT, Type *outT)
         Function::Create(FT, Function::ExternalLinkage, ldgName, M);
 
     return ldgFun;
+}
+
+// "ld.global.cg.s32 $0 $1", "=r,l"(i32* %U31)
+InlineAsm *ldcgGen(Module &M, Type *inT, Type *outT)
+{
+    std::string asmStr = "ld.global.cg.";
+    std::string cStr = "=";
+    if (outT == Type::getInt32Ty(M.getContext()))
+    {   asmStr = asmStr + "s32"; cStr = cStr + "r"; }
+    else if (outT == Type::getInt8Ty(M.getContext()))
+    {   asmStr = asmStr + "s8";  cStr = cStr + "r"; }
+    else if (outT == Type::getInt64Ty(M.getContext()))
+    {   asmStr = asmStr + "s64"; cStr = cStr + "l"; }
+    else if (outT == Type::getFloatTy(M.getContext()))
+    {   asmStr = asmStr + "f32"; cStr = cStr + "f"; }
+    else if (outT == Type::getDoubleTy(M.getContext()))
+    {   asmStr = asmStr + "f64"; cStr = cStr + "d"; }
+    else
+        assert(0);
+    asmStr = asmStr + " $0 [$1];";
+
+    // input can only be a pointer, thus use l constraint
+    // for the asm input
+    cStr = cStr + ",l";
+
+    std::vector<Type*> ldcgArgs;
+    ldcgArgs.push_back(inT);
+    FunctionType *FT =
+        FunctionType::get(outT, ldcgArgs, false);
+
+    return InlineAsm::get(
+        FT,
+        asmStr,
+        cStr,
+        false,
+        false,
+        llvm::InlineAsm::AD_ATT
+    );
 }

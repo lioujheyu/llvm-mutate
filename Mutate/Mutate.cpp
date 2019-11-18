@@ -1,4 +1,10 @@
 // Copyright (C) 2013 Eric Schulte
+// Copyright (C) 2019 Jhe-Yu Liou
+
+// Default in LDG mode, define LDCG for disable L1 cache in CMakeFile
+// #define LDCG
+// #define LDG
+
 #include "Mutate.h"
 
 using namespace llvm;
@@ -451,7 +457,6 @@ namespace {
     static char ID; // pass identification
     Cache() : ModulePass(ID) {}
     bool runOnModule(Module &M){
-      Function *ldgFun;
       Instruction *I;
       if (Inst1 == "Rand") {
         std::pair<Instruction*, StringRef> result = randTexCachableI(M);
@@ -467,14 +472,21 @@ namespace {
 
       Instruction *newI;
       if (isa<LoadInst>(I)) {
-        ldgFun = ldgGen(M, I->getOperand(0)->getType(), I->getType());
         std::vector<Value*>args;
         args.push_back(I->getOperand(0));
+#ifdef LDCG
+        InlineAsm *ldcgF;
+        ldcgF = ldcgGen(M, I->getOperand(0)->getType(), I->getType());
+        newI = CallInst::Create(ldcgF->getFunctionType(), ldcgF, args, I->getName());
+#else
+        Function *ldgFun;
+        ldgFun = ldgGen(M, I->getOperand(0)->getType(), I->getType());
         args.push_back(ConstantInt::get(
           Type::getInt32Ty(M.getContext()),
           cast<LoadInst>(I)->getAlignment()
         ));
         newI = CallInst::Create(ldgFun, args, I->getName());
+#endif
       }
       else if (isa<CallInst>(I)){
         if (cast<CallInst>(I)->getCalledFunction() == NULL) {
