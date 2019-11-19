@@ -607,24 +607,25 @@ Function *ldgGen(Module &M, Type *inT, Type *outT)
     return ldgFun;
 }
 
-// "ld.global.cg.s32 $0 $1", "=r,l"(i32* %U31)
+// "ld.global.cg.u32 $0, [$1]", "=r,l"(i32* %U31)
 InlineAsm *ldcgGen(Module &M, Type *inT, Type *outT)
 {
     std::string asmStr = "ld.global.cg.";
     std::string cStr = "=";
+    // TODO: Figure out when to translate to signed int
     if (outT == Type::getInt32Ty(M.getContext()))
-    {   asmStr = asmStr + "s32"; cStr = cStr + "r"; }
+    {   asmStr = asmStr + "u32"; cStr = cStr + "r"; }
     else if (outT == Type::getInt8Ty(M.getContext()))
-    {   asmStr = asmStr + "s8";  cStr = cStr + "r"; }
+    {   asmStr = asmStr + "u8";  cStr = cStr + "h"; }
     else if (outT == Type::getInt64Ty(M.getContext()))
-    {   asmStr = asmStr + "s64"; cStr = cStr + "l"; }
+    {   asmStr = asmStr + "u64"; cStr = cStr + "l"; }
     else if (outT == Type::getFloatTy(M.getContext()))
     {   asmStr = asmStr + "f32"; cStr = cStr + "f"; }
     else if (outT == Type::getDoubleTy(M.getContext()))
     {   asmStr = asmStr + "f64"; cStr = cStr + "d"; }
     else
         assert(0);
-    asmStr = asmStr + " $0 [$1];";
+    asmStr = asmStr + " $0, [$1];";
 
     // input can only be a pointer, thus use l constraint
     // for the asm input
