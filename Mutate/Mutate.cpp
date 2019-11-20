@@ -2,7 +2,7 @@
 // Copyright (C) 2019 Jhe-Yu Liou
 
 // Default in LDG mode, define LDCG for disable L1 cache in CMakeFile
-// #define LDCG
+#define LDCG
 // #define LDG
 
 #include "Mutate.h"
