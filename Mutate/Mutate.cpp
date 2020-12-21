@@ -116,42 +116,6 @@ namespace {
 }
 
 namespace {
-  struct Trace : public ModulePass {
-    static char ID;
-    Trace() : ModulePass(ID) {}
-
-    bool runOnModule(Module &M){
-      count = 0;
-      PutFn = M.getOrInsertFunction("llvm_mutate_trace",
-                                    Type::getVoidTy(M.getContext()),
-                                    Type::getInt32Ty(M.getContext()));
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkFunction(&*I);
-      return true;
-    }
-
-  private:
-    int unsigned count;
-    Constant *PutFn;
-    CallInst *PutCall;
-
-    void walkFunction(Function *F){
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        Instruction *Inst = &*I;
-        count += 1;
-        // to avoid: PHI nodes not grouped at top of basic block!
-        if(!isa<PHINode>(Inst)){
-          // turn the count into an argument array of constant integer values
-          Value *Args[1];
-          Args[0] = ConstantInt::get(Type::getInt32Ty(F->getContext()), count);
-          PutCall = CallInst::Create(PutFn, Args, "", Inst);
-        }
-      }
-    }
-  };
-}
-
-namespace {
   struct Cut : public ModulePass {
     static char ID;
     Cut() : ModulePass(ID) {}
@@ -196,7 +160,7 @@ namespace {
 
       temp = SI->clone();
       MDNode* N = SI->getMetadata("uniqueID");
-      Inst2ID = cast<MDString>(N->getOperand(0))->getString();
+      Inst2ID = cast<MDString>(N->getOperand(0))->getString().str();
 
       temp->insertBefore(&*DI); // insert temp before DI
       updateMetadata(temp, "i");
@@ -283,7 +247,7 @@ namespace {
         unsigned OPidx = result.second;
         DI->setOperand(OPidx, sval);
         MDNode* N = DI->getMetadata("uniqueID");
-        Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+        Inst1ID = cast<MDString>(N->getOperand(0))->getString().str();
         Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
         errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
         return EXIT_SUCCESS;
@@ -292,8 +256,8 @@ namespace {
         StringRef dstInstBase = (StringRef(Inst1)).rsplit('.').first;
         StringRef dstOP = (StringRef(Inst1)).rsplit('.').second;
         assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
-        unsigned OPidx = std::stoi(dstOP.drop_front(2));// remove "OP"
-        Instruction *DI = dyn_cast_or_null<Instruction>(walkExact(dstInstBase, Inst1ID, M, NULL, false));
+        unsigned OPidx = std::stoi(dstOP.drop_front(2).str());// remove "OP"
+        Instruction *DI = dyn_cast_or_null<Instruction>(walkExact(dstInstBase.str(), Inst1ID, M, NULL, false));
         if (DI == NULL){
           errs() << "oprepl failed. cannot find" << dstInstBase << "\n";
           return EXIT_FAILURE;
@@ -302,7 +266,7 @@ namespace {
         Value *Dop = DI->getOperand(OPidx);
         std::pair<Value*, StringRef> sval = randValueBeforeI(DI->getFunction(), DI, Dop);
         DI->setOperand(OPidx, sval.first);
-        Inst2ID = sval.second;
+        Inst2ID = sval.second.str();
 
         errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
         return EXIT_SUCCESS;
@@ -310,7 +274,7 @@ namespace {
       else if (Inst1 == "Rand" && Inst2 == "Rand") {
         std::pair<Value*, StringRef> val = randValue(M);
         Value *sval = val.first;
-        Inst2ID = val.second;
+        Inst2ID = val.second.str();
         std::pair<Instruction*, unsigned> result;
         if (Inst2ID[0] == 'A')
           result = randOperandAfterI(
@@ -333,7 +297,7 @@ namespace {
         unsigned OPidx = result.second;
         DI->setOperand(OPidx, sval);
         MDNode* N = DI->getMetadata("uniqueID");
-        Inst1ID = cast<MDString>(N->getOperand(0))->getString();
+        Inst1ID = cast<MDString>(N->getOperand(0))->getString().str();
         Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
         errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
         return EXIT_SUCCESS;
@@ -377,7 +341,7 @@ namespace {
 
       temp = SI->clone();
       MDNode* N = SI->getMetadata("uniqueID");
-      Inst2ID = cast<MDString>(N->getOperand(0))->getString();
+      Inst2ID = cast<MDString>(N->getOperand(0))->getString().str();
 
       temp->insertBefore(&*DI); // insert temp before DI
       updateMetadata(temp, "m");
@@ -461,7 +425,7 @@ namespace {
       if (Inst1 == "Rand") {
         std::pair<Instruction*, StringRef> result = randTexCachableI(M);
         I = result.first;
-        Inst1ID = result.second;
+        Inst1ID = result.second.str();
       }
       else {
         I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
@@ -489,21 +453,25 @@ namespace {
 #endif
       }
       else if (isa<CallInst>(I)){
-        if (cast<CallInst>(I)->getCalledFunction() == NULL) {
+        if (cast<CallInst>(I)->isIndirectCall()) {
           errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";
           return EXIT_FAILURE;
         }
-        // Check if called function is ldg()
-        if (!cast<CallInst>(I)->getCalledFunction()->getName().contains(ldgPre)) {
-          errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";
-          return EXIT_FAILURE;
-        }
+        // // Check if called function is ldg()
+        // if (!cast<CallInst>(I)->getCalledFunction()->getName().contains(ldgPre)) {
+        //   errs() << Inst1 << " is not a proper instruction for manipulating cache behavior.\n";
+        //   return EXIT_FAILURE;
+        // }
         newI = new LoadInst(
           I->getType(),     // output type
           I->getOperand(0), // address value
           I->getName(),     // Instruction name
           false,            // is volatile?
-          cast<ConstantInt>(I->getOperand(1))->getValue().getSExtValue()   // align
+#ifdef LDCG
+          Align(getAlignFromType(M, I->getOperand(0)->getType()))
+#else
+          Align(cast<ConstantInt>(I->getOperand(1))->getValue().getSExtValue())   // align
+#endif
         );
       }
       else{
@@ -525,7 +493,6 @@ namespace {
 char Ids::ID = 0;
 char List::ID = 0;
 char Name::ID = 0;
-char Trace::ID = 0;
 char Cut::ID = 0;
 char Insert::ID = 0;
 char Move::ID = 0;
@@ -536,7 +503,6 @@ char Swap::ID = 0;
 static RegisterPass<Ids>     S("ids",     "print the number of instructions");
 static RegisterPass<List>    T("list",    "list instruction's type and id");
 static RegisterPass<Name>    U("name",    "name each instruction by its id");
-static RegisterPass<Trace>   V("trace",   "instrument to print inst. trace");
 static RegisterPass<Cut>     W("cut",     "cut instruction number inst1");
 static RegisterPass<Insert>  X("insert",  "insert inst2 before inst1");
 static RegisterPass<Replace> Y("replace", "replace inst1 with inst2");

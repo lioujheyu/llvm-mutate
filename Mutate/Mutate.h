@@ -22,7 +22,7 @@ const std::string ldgPre = "llvm.nvvm.ldg.global";
 Value* getConstantValue(Type* T)
 {
     switch(T->getTypeID()) {
-    case Type::IntegerTyID: case Type::VectorTyID:
+    case Type::IntegerTyID: case Type::FixedVectorTyID:
         return Constant::getIntegerValue(T, APInt(T->getScalarType()->getIntegerBitWidth(), 1));
     case Type::HalfTyID:    case Type::FloatTyID:
     case Type::DoubleTyID:
@@ -172,20 +172,26 @@ std::pair<Instruction*, StringRef> randTexCachableI(Module &M)
             if (srcI == NULL)
                 continue;
             if (isa<AddrSpaceCastInst>(srcI)) {
-                if (srcI->getOperand(0)->getType()->getPointerAddressSpace() != 1)
+                if (srcI->getOperand(0)->getType()->getPointerAddressSpace() == 3)
                     continue;
             }
-            if (isa<GetElementPtrInst>(srcI)) {
-                if (srcI->getOperand(0)->getType()->getPointerAddressSpace() != 1)
-                    continue;
-            }
+            // if (isa<GetElementPtrInst>(srcI)) {
+            //     if (srcI->getOperand(0)->getType()->getPointerAddressSpace() != 1)
+            //         continue;
+            // }
 
             resultVec.push_back(std::make_pair(&I, I.getName()));
         }
         else if (isa<CallInst>(I)) {
-            if (cast<CallInst>(I).getCalledFunction() == NULL)
+            CallInst* calI = cast<CallInst>(&I);
+            if (calI->isIndirectCall())
                 continue;
-            if (cast<CallInst>(I).getCalledFunction()->getName().contains(ldgPre))
+            if (isa<InlineAsm>(calI->getCalledOperand())) {
+                InlineAsm *inlineasm = cast<InlineAsm>(calI->getCalledOperand());
+                if (inlineasm->getAsmString().find("ld.global.cg") != std::string::npos)
+                    resultVec.push_back(std::make_pair(&I, I.getName()));
+            }
+            else if (calI->getCalledFunction()->getName().contains(ldgPre))
                 resultVec.push_back(std::make_pair(&I, I.getName()));
         }
     }
@@ -209,7 +215,7 @@ void useResult(Instruction *tI){
     unsigned OPidx = result.second;
     DI->setOperand(OPidx, tI);
     MDNode* N = DI->getMetadata("uniqueID");
-    std::string ID = cast<MDString>(N->getOperand(0))->getString();
+    std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
     ID = ID + ".OP" + std::to_string(OPidx);
     errs()<<"opreplaced "<< ID << "," << tI->getName() << "\n";
 }
@@ -296,7 +302,7 @@ void replaceUnfulfillOperands(Instruction *I){
         //   Value *val = findInstanceOfType(I, v->getType());
           if(val != 0){
             MDNode* N = I->getMetadata("uniqueID");
-            std::string ID = cast<MDString>(N->getOperand(0))->getString();
+            std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
             ID = ID + ".OP" + std::to_string(counter);
             errs()<<"opreplaced "<< ID << "," << ret.second << "\n";
             I->setOperand(counter, val); } } } } }
@@ -313,7 +319,7 @@ void updateMetadata(Instruction *I_in, std::string mode)
   MDNode* N = I_in->getMetadata("uniqueID");
 //   StringRef IMD = cast<MDString>(N->getOperand(0))->getString();
 //   std::string targetMD = IMD.rsplit('.').first.str() + "." + mode;
-  std::string targetMD = cast<MDString>(N->getOperand(0))->getString();
+  std::string targetMD = cast<MDString>(N->getOperand(0))->getString().str();
   targetMD += "." + mode;
 
   unsigned cnt = 0;
@@ -346,7 +352,7 @@ Instruction* insertNOP(Instruction *I) {
   assert(I->getParent());
 
   MDNode* N = I->getMetadata("uniqueID");
-  std::string MD = cast<MDString>(N->getOperand(0))->getString();
+  std::string MD = cast<MDString>(N->getOperand(0))->getString().str();
   MD += ".d";
 
   Value* zero = ConstantInt::get(Type::getInt8Ty(I->getContext()), 0);
@@ -406,9 +412,9 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
 
         count += 1;
         if (inst_desc[0] != 'U') { // number
-            if (count == std::stoul(inst_desc)) {
+            if (count == std::stoul(inst_desc.str())) {
                 MDNode* N = I->getMetadata("uniqueID");
-                UID = cast<MDString>(N->getOperand(0))->getString();
+                UID = cast<MDString>(N->getOperand(0))->getString().str();
                 return &*I;
             }
         }
@@ -420,7 +426,7 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
             StringRef IDBase = ID.split('.').first;
             StringRef targetBase = inst_desc.split('.').first;
             if (IDBase.equals(targetBase)) {
-                UID = inst_desc;
+                UID = inst_desc.str();
                 return &*I;
             }
         }
@@ -445,13 +451,13 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
         if (inst_desc[0] != 'U') { // number
             if (count == std::stoul(inst_desc)) {
                 MDNode* N = I->getMetadata("uniqueID");
-                UID = cast<MDString>(N->getOperand(0))->getString();
+                UID = cast<MDString>(N->getOperand(0))->getString().str();
                 return &*I;
             }
         }
         else { // unique ID
             MDNode* N = I->getMetadata("uniqueID");
-            std::string ID = cast<MDString>(N->getOperand(0))->getString();
+            std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
             if ((ID.compare(inst_desc) == 0) ||
                 (ID.compare(inst_desc + ".d") == 0)  ) {
                 UID = inst_desc;
@@ -492,7 +498,7 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT,
                 count += 1;
                 if (inst_desc[0] == 'U') { // unique ID
                     MDNode* N = I.getMetadata("uniqueID");
-                    std::string ID = cast<MDString>(N->getOperand(0))->getString();
+                    std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
                     if ((inst_desc.compare(ID) == 0)) {
                         UID = inst_desc;
                         return &I;
@@ -501,7 +507,7 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT,
                 else { // number
                     if (count == std::stoul(inst_desc)) {
                         MDNode* N = I.getMetadata("uniqueID");
-                        UID = cast<MDString>(N->getOperand(0))->getString();
+                        UID = cast<MDString>(N->getOperand(0))->getString().str();
                         return &I;
                     }
                 }
@@ -518,8 +524,8 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
     StringRef dstInstBase = (StringRef(dst_desc)).rsplit('.').first;
     StringRef dstOP = (StringRef(dst_desc)).rsplit('.').second;
     assert(dstOP.find("OP") != StringRef::npos && "Not a valid operand description!");
-    unsigned OPindex = std::stoi(dstOP.drop_front(2));// remove "OP"
-    Instruction *DI = dyn_cast_or_null<Instruction>(walkExact(dstInstBase, dummy, M, NULL, false));
+    unsigned OPindex = std::stoi(dstOP.drop_front(2).str());// remove "OP"
+    Instruction *DI = dyn_cast_or_null<Instruction>(walkExact(dstInstBase.str(), dummy, M, NULL, false));
     if (DI == NULL)
         return -1;
     if (OPindex >= DI->getNumOperands())
@@ -528,7 +534,7 @@ int replaceOperands(StringRef dst_desc, StringRef src_desc, Module &M)
 
     Value *SV;
     if (src_desc[0] == 'U' || src_desc[0] == 'A') {
-        SV = cast<Value>(walkExact(src_desc, dummy, M, DV->getType(), false));
+        SV = cast<Value>(walkExact(src_desc.str(), dummy, M, DV->getType(), false));
         if (SV->getType()->isVoidTy())
             return -3;
         if (DV->getType() != SV->getType())
@@ -559,7 +565,7 @@ void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV
         Instruction *UI = cast<Instruction>(U->getUser());
 
         MDNode* N = UI->getMetadata("uniqueID");
-        std::string ID = cast<MDString>(N->getOperand(0))->getString();
+        std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
         ID = ID + ".OP" + std::to_string(U->getOperandNo());
         errs()<<"opreplaced "<< ID << "," << metaV.second << "\n";
         U->set(metaV.first);
@@ -650,4 +656,20 @@ InlineAsm *ldcgGen(Module &M, Type *inT, Type *outT)
         false,
         llvm::InlineAsm::AD_ATT
     );
+}
+
+unsigned int getAlignFromType(Module &M, Type *T)
+{
+    if (T == Type::getInt32PtrTy(M.getContext()))
+        return 4;
+    else if (T == Type::getInt8PtrTy(M.getContext()))
+        return 1;
+    else if (T == Type::getInt64PtrTy(M.getContext()))
+        return 8;
+    else if (T == Type::getFloatPtrTy(M.getContext()))
+        return 4;
+    else if (T == Type::getDoublePtrTy(M.getContext()))
+        return 8;
+    else
+        assert(0);
 }
