@@ -6,6 +6,7 @@
 // #define LDG
 
 #include "Mutate.h"
+#include <fstream>
 
 using namespace llvm;
 
@@ -53,25 +54,61 @@ namespace {
     List() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      count = 0;
-      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
-        walkFunction(&*I);
-      return false;
+      listf.open("/tmp/llvm_mutate_list.txt", std::ios::out);
+      if (!listf.is_open())
+        return 1;
+
+      for (Function &F: M) {
+      for (Instruction &TI : instructions(F)) {
+        StringRef UID = getUID(&TI);
+        if (UID.empty())
+          continue;
+        if (!isValidTarget(&TI))
+          continue;
+
+        // Cut
+        if (TI.use_empty())
+          listf << "[('-c', '" << UID.str() << "')]\n";
+        else {
+          std::vector<std::pair<Value*, StringRef>> resultVec;
+          CollectValueBeforeI(&F, &TI, cast<Value>(&TI), resultVec);
+          // Equivalent to replaceAllUsesWithReport
+          for (std::pair<Value*, StringRef> metaV : resultVec) {
+            listf << "[('-c', '" << UID.str() << "')";
+            for (Use &U : TI.uses()) {
+              Instruction *UI = cast<Instruction>(U.getUser());
+              std::string UIID = getUID(UI).str();
+              UIID = UIID + ".OP" + std::to_string(U.getOperandNo());
+              listf << ", ('-p', '" << UIID << "," << metaV.second.str() << "')";
+            }
+            listf << "]\n";
+          }
+        }
+        // Insert
+        for (Function &_F: M) {
+        for (Instruction &SI : instructions(_F)) {
+          bool failed = false;
+          if (!isValidTarget(&SI))
+            continue;
+
+          Instruction* SIclone = SI.clone();
+          // We have to truely insert the cloned instruction so that the dominate analysis
+          // can work.
+          SIclone->insertBefore(&TI);
+          updateMetadata(SIclone, "i");
+          std::string mainMu = "[('-i', '" + getUID(TI).str() + "," + getUID(SI).str() + "')";
+ 
+          bool printSucceed = iterInstComb(listf, SIclone, &SI, 0, mainMu);
+          SIclone->eraseFromParent();
+        }}
+      }}
+      listf.close();
+      return EXIT_SUCCESS;
     }
 
-    // We don't modify the program, so we preserve all analyses
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-      AU.setPreservesAll(); }
-
   private:
-    int unsigned count;
-    void walkFunction(Function *F){
-      for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        count += 1;
-        errs() << count << "\t" << I->getType();
-        for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e; ++i)
-          errs() << "\t" << cast<Value>(i)->getType();
-        errs() << "\n"; } }
+    std::vector<std::string> mutatePool;
+    std::fstream listf;
   };
 }
 
@@ -104,12 +141,10 @@ namespace {
 
       for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         Icount += 1;
-        std::string uniqueID = "U" + std::to_string(Icount);
-        LLVMContext& C = I->getContext();
-        MDNode* N = MDNode::get(C, MDString::get(C, uniqueID));
-        I->setMetadata("uniqueID", N);
+        std::string UID = "U" + std::to_string(Icount);
+        setUID(&*I, UID);
         if (!I->getType()->isVoidTy())
-          I->setName(uniqueID);
+          I->setName(UID);
       }
     }
   };
@@ -159,8 +194,7 @@ namespace {
         return EXIT_FAILURE; }
 
       temp = SI->clone();
-      MDNode* N = SI->getMetadata("uniqueID");
-      Inst2ID = cast<MDString>(N->getOperand(0))->getString().str();
+      Inst2ID = getUID(SI).str();
 
       temp->insertBefore(&*DI); // insert temp before DI
       updateMetadata(temp, "i");
@@ -246,8 +280,7 @@ namespace {
         Instruction* DI = result.first;
         unsigned OPidx = result.second;
         DI->setOperand(OPidx, sval);
-        MDNode* N = DI->getMetadata("uniqueID");
-        Inst1ID = cast<MDString>(N->getOperand(0))->getString().str();
+        Inst1ID = getUID(DI).str();
         Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
         errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
         return EXIT_SUCCESS;
@@ -296,8 +329,7 @@ namespace {
         Instruction* DI = result.first;
         unsigned OPidx = result.second;
         DI->setOperand(OPidx, sval);
-        MDNode* N = DI->getMetadata("uniqueID");
-        Inst1ID = cast<MDString>(N->getOperand(0))->getString().str();
+        Inst1ID = getUID(DI).str();
         Inst1ID = Inst1ID + ".OP" + std::to_string(OPidx);
         errs()<<"opreplaced "<< Inst1ID << "," << Inst2ID << "\n";
         return EXIT_SUCCESS;
@@ -340,8 +372,7 @@ namespace {
         return EXIT_FAILURE; }
 
       temp = SI->clone();
-      MDNode* N = SI->getMetadata("uniqueID");
-      Inst2ID = cast<MDString>(N->getOperand(0))->getString().str();
+      Inst2ID = getUID(SI).str();
 
       temp->insertBefore(&*DI); // insert temp before DI
       updateMetadata(temp, "m");
@@ -479,7 +510,7 @@ namespace {
         return EXIT_FAILURE;
       }
 
-      newI->setMetadata("uniqueID", I->getMetadata("uniqueID"));
+      setUID(newI, getUID(I));
       newI->setMetadata("tbaa", I->getMetadata("tbaa"));
       ReplaceInstWithInst(I, newI);
       updateMetadata(newI, "x");
@@ -501,7 +532,7 @@ char OPRepl::ID = 0;
 char Cache::ID = 0;
 char Swap::ID = 0;
 static RegisterPass<Ids>     S("ids",     "print the number of instructions");
-static RegisterPass<List>    T("list",    "list instruction's type and id");
+static RegisterPass<List>    T("list",    "list all possible mutation");
 static RegisterPass<Name>    U("name",    "name each instruction by its id");
 static RegisterPass<Cut>     W("cut",     "cut instruction number inst1");
 static RegisterPass<Insert>  X("insert",  "insert inst2 before inst1");

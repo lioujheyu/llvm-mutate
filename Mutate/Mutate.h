@@ -2,6 +2,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <random>
+#include <fstream>
+#include <algorithm>
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instructions.h"
@@ -18,6 +20,32 @@ using namespace llvm;
 std::random_device rd;
 std::mt19937 gen(rd());
 const std::string ldgPre = "llvm.nvvm.ldg.global";
+
+StringRef getUID(const Instruction *I) {
+    if (!I)
+        assert(0);
+
+    if (I->hasMetadata("uniqueID")) {
+        MDNode* N = I->getMetadata("uniqueID");
+        StringRef UID = cast<MDString>(N->getOperand(0))->getString();
+        return UID;
+    }
+    else
+        return StringRef();
+}
+
+StringRef getUID(const Instruction &I) { return getUID(&I); }
+
+void setUID(Instruction *I, std::string UID) {
+    if (!I)
+        assert(0);
+
+    LLVMContext& C = I->getContext();
+    MDNode* N = MDNode::get(C, MDString::get(C, UID));
+    I->setMetadata("uniqueID", N);
+}
+
+void setUID(Instruction *I, StringRef UID) { setUID(I, UID.str()); }
 
 Value* getConstantValue(Type* T)
 {
@@ -99,11 +127,11 @@ std::pair<Value*, StringRef> randValueBeforeI(Function *F, Instruction* boundary
     return resultVec[randIdx(gen)];
 }
 
-std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* boundary, Type* T)
-{
+void CollectOperandAfterI(Function &F, Instruction* boundary, Type* T,
+                          std::vector<std::pair<Instruction*, unsigned>> &OPvec) {
+
     DominatorTree DT = DominatorTree(F);
 
-    std::vector<std::pair<Instruction*, unsigned>> OPvec;
     if (boundary == NULL) { // Get the all from the function
         for (Instruction &I : instructions(F)) {
             if (I.getName().find("nop"))
@@ -120,12 +148,6 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
     else{ // has a boundary.
         bool reached = false;
         for (Instruction &I : instructions(F)) {
-            // if (boundary == &I) {
-            //     reached = true;
-            //     continue;
-            // }
-            // if (reached == false)
-            //     continue;
             if (I.getName().find("nop") != StringRef::npos)
                 continue;
             if (DT.dominates(boundary, &I) == false)
@@ -149,6 +171,12 @@ std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* bo
             }
         }
     }
+}
+
+std::pair<Instruction*, unsigned> randOperandAfterI(Function &F, Instruction* boundary, Type* T) 
+{
+    std::vector<std::pair<Instruction*, unsigned>> OPvec;
+    CollectOperandAfterI(F, boundary, T, OPvec);
 
     Instruction* dummy = NULL;
     if (OPvec.empty())
@@ -200,9 +228,7 @@ std::pair<Instruction*, StringRef> randTexCachableI(Module &M)
     return resultVec[randIdx(gen)];
 }
 
-// Use the result of instruction tI somewhere in the basic block in
-// which it is defined.  Ideally in the immediately subsequent
-// instruction.
+// Force to use the result of instruction tI somewhere later.
 void useResult(Instruction *tI){
     std::pair<Instruction*, unsigned> result;
     result = randOperandAfterI(*(tI->getFunction()), tI, tI->getType());
@@ -214,98 +240,117 @@ void useResult(Instruction *tI){
     Instruction* DI = result.first;
     unsigned OPidx = result.second;
     DI->setOperand(OPidx, tI);
-    MDNode* N = DI->getMetadata("uniqueID");
-    std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
+    std::string ID = getUID(DI).str();
     ID = ID + ".OP" + std::to_string(OPidx);
     errs()<<"opreplaced "<< ID << "," << tI->getName() << "\n";
 }
 
-// Find a value of Type T which can be used at Instruction I.  Search
-// in this order.
-// 1. values in Basic Block before I
-// 2. arguments to the function containing I
-// 3. global values
-// 4. null of the correct type
-// 5. return a 0 that the caller can stick where the sun don't shine
-Value *findInstanceOfType(Instruction *I, Type *T){
-  bool isPointer = I->getType()->isPointerTy();
 
-  // local inside the Basic Block
-  BasicBlock *B = I->getParent();
-  for (BasicBlock::iterator prev = B->begin(); cast<Value>(prev) != I; ++prev){
-    if((isPointer && prev->getType()->isPointerTy()) ||
-       (prev->getType() == T)){
-    //   errs()<<"found local replacement: "<<cast<Value>(prev)<<"\n";
-      return cast<Value>(prev); } }
+// Customized dominate analysis
+bool dominates(Value* defV, Instruction *I)
+{
+    if (!defV || !I)
+        return false;
+    
+    if (isa<GlobalValue>(defV) || isa<Constant>(defV))
+        return true;
 
-  // arguments to the function
-  Function *F = B->getParent();
-  for (Function::arg_iterator arg = F->arg_begin(), E = F->arg_end();
-       arg != E; ++arg){
-    if((isPointer && arg->getType()->isPointerTy()) ||
-       (arg->getType() == T)){
-    //   errs()<<"found arg replacement: "<<arg<<"\n";
-      return cast<Value>(arg); } }
+    Function *F = I->getFunction();
+    if (dyn_cast_or_null<Argument>(defV)) {
+        for (auto &A : F->args()){
+            if (&A == defV)
+                return true;
+        }
+        return false;
+    }
 
-  // global values
-  Module *M = F->getParent();
-  for (Module::global_iterator g = M->global_begin(), E = M->global_end();
-       g != E; ++g){
-    if((isPointer && g->getType()->isPointerTy()) ||
-       (g->getType() == T)){
-    //   errs()<<"found global replacement: "<<cast<Value>(g)<<"\n";
-      return cast<Value>(g); } }
+    DominatorTree DT = DominatorTree(*F);
+    if (dyn_cast_or_null<Instruction>(defV))
+        if (DT.dominates(cast<Instruction>(defV), I))
+            return true;
 
-  // TODO: types which could be replaced with sane default
-  //       - result of comparisons
-  //       - nulls or zeros for number types
-  //         (This is questionable. Why use zero instead of one?)
-  // pulled from getNullValue
-  return getConstantValue(T);
+    return false;
 }
 
 // Replace the operands of Instruction I with in-scope values of the
 // same type.  If the operands are already in scope, then retain them.
 void replaceUnfulfillOperands(Instruction *I){
-  // don't touch arguments of branch instructions
-  if(isa<BranchInst>(I)) return;
+    if(isa<BranchInst>(I)) return;
 
-  // loop through operands,
-  int counter = -1;
-  for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e; ++i) {
-    counter++;
-    Value *v = *i;
+    // loop through operands,
+    for (auto &op : I->operands()) {
+        if (dominates(op.get(), I))
+            continue;
 
-    // don't touch global or constant values
-    if (!isa<GlobalValue>(v) && !isa<Constant>(v)){
+        std::pair<Value*, StringRef> ret = randValueBeforeI(I->getFunction(), I, op.get());
+        Value *val = ret.first;
 
-      // don't touch arguments to the current function
-      Function *F = I->getParent()->getParent();
-      bool isAnArgument = false;
-      for (Function::arg_iterator arg = F->arg_begin(), E = F->arg_end();
-           arg != E; ++arg) {
-        if( arg == v ){ isAnArgument = true; break; } }
-
-      if(!isAnArgument) {
-        // Don't touch operands which are in scope
-        BasicBlock *B = I->getParent();
-        bool isInScope = false;
-        for (BasicBlock::iterator i = B->begin();
-             cast<Instruction>(i) != I; ++i)
-          if(&*i == v) { isInScope = true; break; }
-
-        if(!isInScope){
-          // If we've made it this far we really do have to find a replacement
-          std::pair<Value*, StringRef> ret = randValueBeforeI(F, I, v);
-          Value *val = ret.first;
-
-        //   Value *val = findInstanceOfType(I, v->getType());
-          if(val != 0){
-            MDNode* N = I->getMetadata("uniqueID");
-            std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
-            ID = ID + ".OP" + std::to_string(counter);
+        if(val != 0) {
+            std::string ID = getUID(I).str();
+            ID = ID + ".OP" + std::to_string(op.getOperandNo());
             errs()<<"opreplaced "<< ID << "," << ret.second << "\n";
-            I->setOperand(counter, val); } } } } }
+            I->setOperand(op.getOperandNo(), val);
+        }
+    }
+}
+
+bool iterInstComb(std::fstream &listf, Instruction *SIclone, Instruction *SI, unsigned idx, std::string cumulatedStr) {
+    if (idx < SIclone->getNumOperands()) { // iterate through operand
+        Value *oprdFrom = SIclone->getOperand(idx);
+        if (dominates(oprdFrom, SIclone))
+            return iterInstComb(listf, SIclone, SI, idx+1, cumulatedStr);
+        else {
+            std::vector<std::pair<Value*, StringRef>> resultVec;
+            CollectValueBeforeI(SIclone->getFunction(), SIclone, oprdFrom, resultVec);
+            if (resultVec.empty())
+                return false;
+            for (std::pair<Value*, StringRef> metaV : resultVec) {
+                std::string next = ", ('-p', '" + getUID(SIclone).str() + ".OP" + std::to_string(idx);
+                next = next + "," + metaV.second.str() + "')";
+                if (iterInstComb(listf, SIclone, SI, idx+1, cumulatedStr + next) == false)
+                    return false;
+            }
+            return true;
+        }
+    }
+    else if (idx == SIclone->getNumOperands()){ // go for useResult iteration
+        if (SI->use_empty()) {
+            listf << cumulatedStr << "]\n";
+            return true;
+        }
+        else {
+            // std::vector<std::pair<Instruction*, unsigned>> OPvec;
+            // CollectOperandAfterI(*SIclone->getFunction(), SIclone, SIclone->getType(), OPvec);
+            // if (OPvec.empty())
+            //     return true; // not print anything
+            // for (std::pair<Instruction*, unsigned> metaOp : OPvec) {
+            //     unsigned OPidx = metaOp.second;
+            //     std::string next = ", ('-p', '" + getUID(metaOp.first).str() + ".OP" + std::to_string(OPidx);
+            //     next = next + "," + getUID(SIclone).str() + "')]\n";
+            //     listf << cumulatedStr << next;
+            // }
+
+            // we only use the result for the next immediate insturction to reduce mutation duplication.
+            Instruction *nextI = SIclone->getNextNonDebugInstruction();
+            if (!nextI)
+                return false;
+            if (nextI->getName().find("nop") != StringRef::npos)
+                return false;
+
+            for (auto &oprd : nextI->operands()) {
+                if (oprd.get()->getType() == SIclone->getType()) {
+                    unsigned OPidx = oprd.getOperandNo();
+                    std::string next = ", ('-p', '" + getUID(nextI).str() + ".OP" + std::to_string(OPidx);
+                    next = next + "," + getUID(SIclone).str() + "')]\n";
+                    listf << cumulatedStr << next;
+                }
+            }
+            return true;
+        }
+    }
+    else {
+        assert(0);
+    }
 }
 
 /***
@@ -316,10 +361,7 @@ void replaceUnfulfillOperands(Instruction *I){
  **/
 void updateMetadata(Instruction *I_in, std::string mode)
 {
-  MDNode* N = I_in->getMetadata("uniqueID");
-//   StringRef IMD = cast<MDString>(N->getOperand(0))->getString();
-//   std::string targetMD = IMD.rsplit('.').first.str() + "." + mode;
-  std::string targetMD = cast<MDString>(N->getOperand(0))->getString().str();
+  std::string targetMD = getUID(I_in).str();
   targetMD += "." + mode;
 
   unsigned cnt = 0;
@@ -328,8 +370,7 @@ void updateMetadata(Instruction *I_in, std::string mode)
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
     //   if (&*I == I_in)
     //     continue;
-      MDNode* N = I->getMetadata("uniqueID");
-      StringRef I_MD = cast<MDString>(N->getOperand(0))->getString();
+      StringRef I_MD = getUID(&*I);
       if (I_MD.find(targetMD) != StringRef::npos)
         cnt++;
     }
@@ -337,9 +378,7 @@ void updateMetadata(Instruction *I_in, std::string mode)
   targetMD += std::to_string(cnt+1);
   if (!I_in->getType()->isVoidTy())
     I_in->setName(targetMD);
-  LLVMContext& C = I_in->getContext();
-  N = MDNode::get(C, MDString::get(C, targetMD));
-  I_in->setMetadata("uniqueID", N);
+  setUID(I_in, targetMD);
 }
 
 /***
@@ -351,16 +390,12 @@ void updateMetadata(Instruction *I_in, std::string mode)
 Instruction* insertNOP(Instruction *I) {
   assert(I->getParent());
 
-  MDNode* N = I->getMetadata("uniqueID");
-  std::string MD = cast<MDString>(N->getOperand(0))->getString().str();
+  std::string MD = getUID(I).str();
   MD += ".d";
 
   Value* zero = ConstantInt::get(Type::getInt8Ty(I->getContext()), 0);
   Instruction *nop = BinaryOperator::Create(Instruction::Add, zero, zero, "nop", &*I);
-
-  LLVMContext& C = nop->getContext();
-  MDNode* Nnop = MDNode::get(C, MDString::get(C, MD));
-  nop->setMetadata("uniqueID", Nnop);
+  setUID(nop, MD);
 
   return nop;
 }
@@ -413,14 +448,12 @@ Instruction* walkCollect(StringRef inst_desc, std::string &UID, Module &M)
         count += 1;
         if (inst_desc[0] != 'U') { // number
             if (count == std::stoul(inst_desc.str())) {
-                MDNode* N = I->getMetadata("uniqueID");
-                UID = cast<MDString>(N->getOperand(0))->getString().str();
+                UID = getUID(&*I).str();
                 return &*I;
             }
         }
         else { // unique ID
-            MDNode* N = I->getMetadata("uniqueID");
-            StringRef ID = cast<MDString>(N->getOperand(0))->getString();
+            StringRef ID = getUID(&*I);
             if (ID.find(".d") != StringRef::npos) continue; // Cannot be a deleted instruction
 
             StringRef IDBase = ID.split('.').first;
@@ -450,14 +483,12 @@ Instruction* walkPosition(std::string inst_desc, std::string &UID, Module &M)
         count += 1;
         if (inst_desc[0] != 'U') { // number
             if (count == std::stoul(inst_desc)) {
-                MDNode* N = I->getMetadata("uniqueID");
-                UID = cast<MDString>(N->getOperand(0))->getString().str();
+                UID = getUID(&*I).str();
                 return &*I;
             }
         }
         else { // unique ID
-            MDNode* N = I->getMetadata("uniqueID");
-            std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
+            std::string ID = getUID(&*I).str();
             if ((ID.compare(inst_desc) == 0) ||
                 (ID.compare(inst_desc + ".d") == 0)  ) {
                 UID = inst_desc;
@@ -497,8 +528,7 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT,
 
                 count += 1;
                 if (inst_desc[0] == 'U') { // unique ID
-                    MDNode* N = I.getMetadata("uniqueID");
-                    std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
+                    std::string ID = getUID(&I).str();
                     if ((inst_desc.compare(ID) == 0)) {
                         UID = inst_desc;
                         return &I;
@@ -506,8 +536,7 @@ Value* walkExact(std::string inst_desc, std::string &UID, Module &M, Type* refT,
                 }
                 else { // number
                     if (count == std::stoul(inst_desc)) {
-                        MDNode* N = I.getMetadata("uniqueID");
-                        UID = cast<MDString>(N->getOperand(0))->getString().str();
+                        UID = getUID(&I).str();
                         return &I;
                     }
                 }
@@ -564,8 +593,7 @@ void replaceAllUsesWithReport(Instruction* I, std::pair<Value*, StringRef> metaV
         Use *U = useList.back();
         Instruction *UI = cast<Instruction>(U->getUser());
 
-        MDNode* N = UI->getMetadata("uniqueID");
-        std::string ID = cast<MDString>(N->getOperand(0))->getString().str();
+        std::string ID = getUID(UI).str();
         ID = ID + ".OP" + std::to_string(U->getOperandNo());
         errs()<<"opreplaced "<< ID << "," << metaV.second << "\n";
         U->set(metaV.first);
