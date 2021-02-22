@@ -1,0 +1,1 @@
+__llvm_version__ = "@LLVM_VERSION_STRING@"
