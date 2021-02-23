@@ -93,7 +93,7 @@ if __name__ == '__main__':
             print(f"llvm-mutate: Error in {opt_proc.args}")
             print(opt_stderr.decode(), end='')
             sys.exit(-1)
-        print(opt_stderr.decode(), end='')
+        print(opt_stderr.decode(), end='', file=sys.stderr)
         sys.exit(0)
     elif 'mutation_commands' in args:
         input_str = args.input_file.buffer.read()
@@ -122,7 +122,7 @@ if __name__ == '__main__':
                 sys.exit(-1)
 
             # TODO: Have proper return code from Mutate.so instead of hard-coding here
-            print(opt_stderr.decode(), end='')
+            print(opt_stderr.decode(), end='', file=sys.stderr)
             if opt_stderr.decode().find('failed') != -1:
                 sys.exit(-2)
             if opt_stderr.decode().find('mismatch') != -1:
