@@ -5,11 +5,10 @@ import subprocess
 import inspect
 import os
 
-import gevo
+import gevo._llvm
 from gevo._llvm import __llvm_version__
 
-os.path.dirname(inspect.getfile(gevo))
-LLVM_MUTATE_LIBRARY_PATH=f'{os.path.dirname(inspect.getfile(gevo))}/Mutate.so.{__llvm_version__}'
+LLVM_MUTATE_LIBRARY_PATH=f'{os.path.dirname(inspect.getfile(gevo._llvm))}/Mutate.so.{__llvm_version__}'
 
 if __name__ == '__main__':
     # Command parser
@@ -22,10 +21,10 @@ if __name__ == '__main__':
             setattr(namespace, 'mutation_commands', previous_act)
 
     llvm_mutate_parser = argparse.ArgumentParser(description="Manipulate LLVM assembly from Nvidia CUDA Kernels")
-    llvm_mutate_parser.add_argument('-o', '--output_file', metavar='FILE', nargs='?', type=argparse.FileType('w'), default=sys.stdout,
-        help='Output file name. Output will be redirected to stdout if output file name is not specified')
-    llvm_mutate_parser.add_argument('-f', '--input_file', metavar='FILE', nargs='?', type=argparse.FileType('rb'), default=sys.stdin,
-        help='Input file name. llvm-mutate will use and wait for stdin as the input stream if input file name is not specified.')
+    llvm_mutate_parser.add_argument('-o', '--output_file', metavar='FILE', type=argparse.FileType('w'), default=sys.stdout,
+        help='Output file name. Output will be redirected to stdout if output file is not specified')
+    llvm_mutate_parser.add_argument('-f', '--input_file', metavar='FILE', type=argparse.FileType('rb'), default=sys.stdin,
+        help='Input file name. llvm-mutate will use and wait for stdin as the input stream if input file is not specified.')
     llvm_mutate_parser.add_argument('-n', '--name', action='store_true',
         help='Add unique ID (UID) for each instruction. UID is one of needed instruction description in mutation operations')
     llvm_mutate_parser.add_argument('-I', '--ids', action='store_true',
