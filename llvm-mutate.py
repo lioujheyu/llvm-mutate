@@ -121,14 +121,14 @@ if __name__ == '__main__':
                 print(opt_stderr.decode(), end='')
                 sys.exit(-1)
 
-            # TODO: Have proper return code from Mutate.so instead of hard-coding here
+            # TODO: Have proper return code from Mutate.so. irind.py in gevo need to be changed as well
             print(opt_stderr.decode(), end='', file=sys.stderr)
-            if opt_stderr.decode().find('failed') != -1:
-                sys.exit(-2)
-            if opt_stderr.decode().find('mismatch') != -1:
-                sys.exit(-3)
-            if opt_stderr.decode().find('no use') != -1:
-                sys.exit(-4)
+            # if opt_stderr.decode().find('failed') != -1:
+            #     sys.exit(-2)
+            # if opt_stderr.decode().find('mismatch') != -1:
+            #     sys.exit(-3)
+            # if opt_stderr.decode().find('no use') != -1:
+            #     sys.exit(-4)
             input_str = opt_stdout
     else:
         llvm_mutate_parser.print_help()
