@@ -96,7 +96,7 @@ if __name__ == '__main__':
         print(opt_stderr.decode(), end='')
         sys.exit(0)
     elif 'mutation_commands' in args:
-        input_str = args.input_file.read()
+        input_str = args.input_file.buffer.read()
         for mop in args.mutation_commands:
             insts = mop[1].split(',')
             inst_args = [ f'-inst1={insts[0]}' ] if len(insts) == 1 else\
