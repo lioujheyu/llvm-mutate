@@ -5,10 +5,16 @@ import subprocess
 import inspect
 import os
 
-import gevo._llvm
-from gevo._llvm import __llvm_version__
+try:
+    import gevo._llvm
+    from gevo import __version__
+    from gevo._llvm import __llvm_version__
 
-LLVM_MUTATE_LIBRARY_PATH=f'{os.path.dirname(inspect.getfile(gevo._llvm))}/Mutate.so.{__llvm_version__}'
+    LLVM_MUTATE_LIBRARY_PATH=f'{os.path.dirname(inspect.getfile(gevo._llvm))}/Mutate.so.{__llvm_version__}'
+except ImportError:
+    # TODO: load mutation.so from Mutate folder with proper llvm version string as a standalone mode
+    print('Cannot find Mutate.so because gevo is not installed! ')
+    sys.exit(-1)
 
 if __name__ == '__main__':
     # Command parser
@@ -33,13 +39,16 @@ if __name__ == '__main__':
         help='Not connect the newly inserted instruction\'s result value back into the use-def\
               chain when performing mutation operations. This argument is mainly for reproducing\
               program variant from a sequence of mutations')
+    llvm_mutate_parser.add_argument('--version', action='version', version='%(prog)s under gevo-' + __version__)
 
     # grouping mutation commands
     mutation_operation_group = llvm_mutate_parser.add_argument_group(
         title='Mutation Operations',
         description='Mutation operations only accept instruction description [INST] in 2 formats: \
-                     integer number as instruction index or Unique ID. \
-                     Note: --name, --ids, and mutation operation cannot be used together')
+                     integer number as instruction index or Unique ID. The advantage of UID is,  \
+                     once created, persistence throughout the mutation operation as long as the \
+                     the instruction UID denoted is not the target of mutation operation. \
+                     Note: --name, --ids, and mutation operation cannot be used together.')
     mutation_operation_group.add_argument(
         '-c', '--cut', type=str, dest='-cut', action=MutationAction, metavar='INST',
         help='Cut the given instruction')
