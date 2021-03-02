@@ -22,6 +22,10 @@ set_target_properties(Mutate PROPERTIES SUFFIX ".so.${LLVM_VERSION_MAJOR}")
 set(LLVM_VERSION_STRING ${LLVM_VERSION_MAJOR})
 configure_file(_llvm.py.in _llvm.py)
 
+enable_testing()
+file(COPY tests DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+add_test(NAME unittest COMMAND find ./ -name "*.ll" -exec lit -v {} +)
+
 # INSTALL_PROGRAMS(/bin llvm-mutate)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/_llvm.py DESTINATION .)
 install(TARGETS Mutate DESTINATION .)
