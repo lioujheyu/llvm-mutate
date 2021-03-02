@@ -5,11 +5,16 @@ import subprocess
 import inspect
 import os
 
-import gevo
-from gevo._llvm import __llvm_version__
+try:
+    import gevo._llvm
+    from gevo import __version__
+    from gevo._llvm import __llvm_version__
 
-os.path.dirname(inspect.getfile(gevo))
-LLVM_MUTATE_LIBRARY_PATH=f'{os.path.dirname(inspect.getfile(gevo))}/Mutate.so.{__llvm_version__}'
+    LLVM_MUTATE_LIBRARY_PATH=f'{os.path.dirname(inspect.getfile(gevo._llvm))}/Mutate.so.{__llvm_version__}'
+except ImportError:
+    # TODO: load mutation.so from Mutate folder with proper llvm version string as a standalone mode
+    print('Cannot find Mutate.so because gevo is not installed! ')
+    sys.exit(-1)
 
 if __name__ == '__main__':
     # Command parser
@@ -22,9 +27,9 @@ if __name__ == '__main__':
             setattr(namespace, 'mutation_commands', previous_act)
 
     llvm_mutate_parser = argparse.ArgumentParser(description="Manipulate LLVM assembly from Nvidia CUDA Kernels")
-    llvm_mutate_parser.add_argument('-o', '--output_file', metavar='FILE', nargs='?', type=argparse.FileType('w'), default=sys.stdout,
+    llvm_mutate_parser.add_argument('-o', '--output_file', metavar='FILE', type=argparse.FileType('w'), default=sys.stdout,
         help='Output file name. Output will be redirected to stdout if output file name is not specified')
-    llvm_mutate_parser.add_argument('-f', '--input_file', metavar='FILE', nargs='?', type=argparse.FileType('rb'), default=sys.stdin,
+    llvm_mutate_parser.add_argument('-f', '--input_file', metavar='FILE', type=argparse.FileType('rb'), default=sys.stdin,
         help='Input file name. llvm-mutate will use and wait for stdin as the input stream if input file name is not specified.')
     llvm_mutate_parser.add_argument('-n', '--name', action='store_true',
         help='Add unique ID (UID) for each instruction. UID is one of needed instruction description in mutation operations')
@@ -34,13 +39,16 @@ if __name__ == '__main__':
         help='Not connect the newly inserted instruction\'s result value back into the use-def\
               chain when performing mutation operations. This argument is mainly for reproducing\
               program variant from a sequence of mutations')
+    llvm_mutate_parser.add_argument('--version', action='version', version='%(prog)s under gevo-' + __version__)
 
     # grouping mutation commands
     mutation_operation_group = llvm_mutate_parser.add_argument_group(
         title='Mutation Operations',
         description='Mutation operations only accept instruction description [INST] in 2 formats: \
-                     integer number as instruction index or Unique ID. \
-                     Note: --name, --ids, and mutation operation cannot be used together')
+                     integer number as instruction index or Unique ID. The advantage of UID is,  \
+                     once created, persistence throughout the mutation operation as long as the \
+                     the instruction UID denoted is not the target of mutation operation. \
+                     Note: --name, --ids, and mutation operation cannot be used together.')
     mutation_operation_group.add_argument(
         '-c', '--cut', type=str, dest='-cut', action=MutationAction, metavar='INST',
         help='Cut the given instruction')
