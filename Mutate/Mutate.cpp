@@ -151,6 +151,34 @@ namespace {
 }
 
 namespace {
+  struct Query : public ModulePass {
+    static char ID;
+    Query() : ModulePass(ID) {}
+
+    bool runOnModule(Module &M){
+      Instruction *I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+      if (I == NULL) {
+        errs() << "Query failed. Cannot find " << Inst1 << "\n";
+        return EXIT_FAILURE;
+      }
+      DILocation *Loc = I->getDebugLoc();
+      if (Loc == NULL) {
+        errs() << "Query failed. " << Inst1 << " has no source line info\n";
+        return EXIT_FAILURE; 
+      }
+      if (Loc->isImplicitCode())
+        errs() << "Query uncertain. " << Inst1 << " is implicit code\n";
+      errs() << Loc->getFilename() << ':' << Loc->getLine() << ':' << Loc->getColumn() << "\n";
+      return EXIT_SUCCESS;
+    }
+
+    // We don't modify the program, so we preserve all analyses
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+      AU.setPreservesAll(); }
+  };
+}
+
+namespace {
   struct Cut : public ModulePass {
     static char ID;
     Cut() : ModulePass(ID) {}
@@ -524,6 +552,7 @@ namespace {
 char Ids::ID = 0;
 char List::ID = 0;
 char Name::ID = 0;
+char Query::ID = 0;
 char Cut::ID = 0;
 char Insert::ID = 0;
 char Move::ID = 0;
@@ -534,6 +563,7 @@ char Swap::ID = 0;
 static RegisterPass<Ids>     S("ids",     "print the number of instructions");
 static RegisterPass<List>    T("list",    "list all possible mutation");
 static RegisterPass<Name>    U("name",    "name each instruction by its id");
+static RegisterPass<Query>   V("query",   "query the instruction's source line info");
 static RegisterPass<Cut>     W("cut",     "cut instruction number inst1");
 static RegisterPass<Insert>  X("insert",  "insert inst2 before inst1");
 static RegisterPass<Replace> Y("replace", "replace inst1 with inst2");

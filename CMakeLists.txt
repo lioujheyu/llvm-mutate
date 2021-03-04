@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 
 project(llvm-mutaet)
 
-set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_C_FLAGS "-fPIC")
 set(CMAKE_CXX_FLAGS "-fPIC -fno-rtti -std=c++17")
 

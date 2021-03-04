@@ -40,18 +40,20 @@ if __name__ == '__main__':
 
     llvm_mutate_parser = argparse.ArgumentParser(description="Manipulate LLVM assembly from Nvidia CUDA Kernels")
     llvm_mutate_parser.add_argument('-o', '--output_file', metavar='FILE', type=FileOpener('w'), default='-',
-        help='Output file name. Output will be redirected to stdout if output file is not specified')
+        help='output file name. Output will be redirected to stdout if output file is not specified')
     llvm_mutate_parser.add_argument('-f', '--input_file', metavar='FILE', type=FileOpener('r'), default='-',
-        help='Input file name. llvm-mutate will use and wait for stdin as the input stream if input file is not specified.')
+        help='input file name. llvm-mutate will use and wait for stdin as the input stream if input file is not specified.')
     llvm_mutate_parser.add_argument('-n', '--name', action='store_true',
-        help='Add unique ID (UID) for each instruction. UID is one of needed instruction description in mutation operations')
+        help='add unique ID (UID) for each instruction. UID is one of needed instruction description in mutation operations')
     llvm_mutate_parser.add_argument('-I', '--ids', action='store_true',
-        help='Show the number of instructions')
+        help='show the number of instructions')
+    llvm_mutate_parser.add_argument('-q', '--query', type=str, metavar='INST',
+        help='query the instruction\'s source line info')
     llvm_mutate_parser.add_argument('--not_use_result', action='store_true',
-        help='Not connect the newly inserted instruction\'s result value back into the use-def\
+        help='not connect the newly inserted instruction\'s result value back into the use-def\
               chain when performing mutation operations. This argument is mainly for reproducing\
               program variant from a sequence of mutations')
-    llvm_mutate_parser.add_argument('--version', action='version', version='%(prog)s under gevo-' + __version__)
+    llvm_mutate_parser.add_argument('-V', '--version', action='version', version='%(prog)s under gevo-' + __version__)
 
     # grouping mutation commands
     mutation_operation_group = llvm_mutate_parser.add_argument_group(
@@ -63,22 +65,22 @@ if __name__ == '__main__':
                      Note: --name, --ids, and mutation operation cannot be used together.')
     mutation_operation_group.add_argument(
         '-c', '--cut', type=str, dest='-cut', action=MutationAction, metavar='INST',
-        help='Cut the given instruction')
+        help='cut the given instruction')
     mutation_operation_group.add_argument(
         '-i', '--insert', type=str, dest='-insert', action=MutationAction, metavar='INST1,INST2',
-        help='Copy the second inst. before the first')
+        help='copy the second inst. before the first')
     mutation_operation_group.add_argument(
         '-p', '--oprepl', type=str, dest='-oprepl', action=MutationAction, metavar='INST1,INST2',
-        help='Replace the first Operand. with the second')
+        help='replace the first Operand. with the second')
     mutation_operation_group.add_argument(
         '-r', '--replace', type=str, dest='-replace', action=MutationAction, metavar='INST1,INST2', 
-        help='Replace the first inst. with the second')
+        help='replace the first inst. with the second')
     mutation_operation_group.add_argument(
         '-m', '--move', type=str, dest='-move', action=MutationAction, metavar='INST1,INST2',
-        help='Move the second inst. before the first')
+        help='move the second inst. before the first')
     mutation_operation_group.add_argument(
         '-s', '--swap', type=str, dest='-swap', action=MutationAction, metavar='INST1,INST2',
-        help='Swap the location of two instructions')
+        help='swap the location of two instructions')
 
     args = llvm_mutate_parser.parse_args()
     OPT_NOT_USE_RESULT = '-use_result=0' if args.not_use_result else ''
@@ -114,6 +116,21 @@ if __name__ == '__main__':
             print(opt_stderr.decode(), end='')
             sys.exit(-1)
         print(opt_stderr.decode(), end='', file=sys.stderr)
+        sys.exit(0)
+    elif args.query:
+        opt_proc = subprocess.Popen(
+            [ f'opt-{__llvm_version__}',
+              '-load', LLVM_MUTATE_LIBRARY_PATH,
+              '-query', f'-inst1={args.query}'],
+            stdin=args.input_file.open(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE )
+        opt_stdout, opt_stderr = opt_proc.communicate()
+        if opt_proc.returncode != 0:
+            print(f"llvm-mutate: Error in {opt_proc.args}")
+            print(opt_stderr.decode(), end='')
+            sys.exit(-1)
+        print(opt_stderr.decode(), end='', file=sys.stdout)
         sys.exit(0)
     elif 'mutation_commands' in args:
         input_str = args.input_file.open().buffer.read()
