@@ -16,6 +16,18 @@ except ImportError:
     print('Cannot find Mutate.so because gevo is not installed! ')
     sys.exit(-1)
 
+class FileOpener(argparse.FileType):
+    # delayed FileType;
+    # sample use:
+    # with args.input.open() as f: f.read()
+    def __call__(self, string):
+        # optionally test string
+        self.filename = string
+        return self
+    def open(self):
+        return super(FileOpener,self).__call__(self.filename)
+    file =  property(open, None, None, 'open file property')
+
 if __name__ == '__main__':
     # Command parser
     class MutationAction(argparse.Action):
@@ -27,9 +39,9 @@ if __name__ == '__main__':
             setattr(namespace, 'mutation_commands', previous_act)
 
     llvm_mutate_parser = argparse.ArgumentParser(description="Manipulate LLVM assembly from Nvidia CUDA Kernels")
-    llvm_mutate_parser.add_argument('-o', '--output_file', metavar='FILE', type=argparse.FileType('w'), default=sys.stdout,
+    llvm_mutate_parser.add_argument('-o', '--output_file', metavar='FILE', type=FileOpener('w'), default='-',
         help='Output file name. Output will be redirected to stdout if output file is not specified')
-    llvm_mutate_parser.add_argument('-f', '--input_file', metavar='FILE', type=argparse.FileType('r'), default=sys.stdin,
+    llvm_mutate_parser.add_argument('-f', '--input_file', metavar='FILE', type=FileOpener('r'), default='-',
         help='Input file name. llvm-mutate will use and wait for stdin as the input stream if input file is not specified.')
     llvm_mutate_parser.add_argument('-n', '--name', action='store_true',
         help='Add unique ID (UID) for each instruction. UID is one of needed instruction description in mutation operations')
@@ -80,7 +92,7 @@ if __name__ == '__main__':
             [ f'opt-{__llvm_version__}',
               '-load', LLVM_MUTATE_LIBRARY_PATH,
               '-name'],
-            stdin=args.input_file,
+            stdin=args.input_file.open(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE )
         opt_stdout, opt_stderr = opt_proc.communicate()
@@ -93,7 +105,7 @@ if __name__ == '__main__':
             [ f'opt-{__llvm_version__}',
               '-load', LLVM_MUTATE_LIBRARY_PATH,
               '-ids'],
-            stdin=args.input_file,
+            stdin=args.input_file.open(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE )
         opt_stdout, opt_stderr = opt_proc.communicate()
@@ -104,7 +116,7 @@ if __name__ == '__main__':
         print(opt_stderr.decode(), end='', file=sys.stderr)
         sys.exit(0)
     elif 'mutation_commands' in args:
-        input_str = args.input_file.buffer.read()
+        input_str = args.input_file.open().buffer.read()
         for mop in args.mutation_commands:
             insts = mop[1].split(',')
             inst_args = [ f'-inst1={insts[0]}' ] if len(insts) == 1 else\
@@ -153,7 +165,7 @@ if __name__ == '__main__':
         print(llvmdis_stderr.decode())
         sys.exit(-1)
 
-    print(llvmdis_stdout.decode(), file=args.output_file, end='')
+    print(llvmdis_stdout.decode(), file=args.output_file.open(), end='')
 
     # Link to PTX
     # cuda.init()
