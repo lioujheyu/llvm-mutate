@@ -168,7 +168,7 @@ namespace {
       }
       if (Loc->isImplicitCode())
         errs() << "Query uncertain. " << Inst1 << " is implicit code\n";
-      errs() << Loc->getFilename() << ':' << Loc->getLine() << ':' << Loc->getColumn() << "\n";
+      errs() << Loc->getDirectory() << '/' << Loc->getFilename() << ':' << Loc->getLine() << ':' << Loc->getColumn() << "\n";
       return EXIT_SUCCESS;
     }
 
