@@ -168,7 +168,14 @@ namespace {
       }
       if (Loc->isImplicitCode())
         errs() << "Query uncertain. " << Inst1 << " is implicit code\n";
-      errs() << Loc->getDirectory() << '/' << Loc->getFilename() << ':' << Loc->getLine() << ':' << Loc->getColumn() << "\n";
+      errs() << Loc->getDirectory() << '/' << Loc->getFilename() 
+             << ':' << Loc->getLine() << ':' << Loc->getColumn();
+      if (DebugLoc InlinedAtDL = Loc->getInlinedAt()) {
+        errs() << " @[ ";
+        InlinedAtDL.print(errs());
+        errs() << " ]";
+      }
+      errs() << "\n";
       return EXIT_SUCCESS;
     }
 
