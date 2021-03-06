@@ -1,5 +1,5 @@
-; RUN: llvm-mutate -f %s -q U9 2>&1 | filecheck %s
-; CHECK:        /you_think_you_do/axpy.cu:4:22
+; RUN:    llvm-mutate -f %s -q U1 2>&1 | filecheck %s
+; CHECK:  //usr/lib/llvm-11/lib/clang/11.1.0/include/__clang_cuda_builtin_vars.h:53:3
 
 define dso_local void @_Z4axpyfPfS_(float %A1, float* nocapture readonly %A2, float* nocapture %A3) !dbg !11 {
   %U1 = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !dbg !13, !uniqueID !17
