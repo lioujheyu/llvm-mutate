@@ -156,7 +156,7 @@ namespace {
     Query() : ModulePass(ID) {}
 
     bool runOnModule(Module &M){
-      Instruction *I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, true));
+      Instruction *I = dyn_cast_or_null<Instruction>(walkExact(Inst1, Inst1ID, M, NULL, false));
       if (I == NULL) {
         errs() << "Query failed. Cannot find " << Inst1 << "\n";
         return EXIT_FAILURE;
